@@ -287,7 +287,7 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
      *
      * @return the data type handlers
      */
-    private List<DataTypeHandler<K1>> loadDataType(String typeStr, Context context) {
+    private List<DataTypeHandler<K1>> loadDataTypeHandlers(String typeStr, Context context) {
         // Do not load the type twice
         if (!typeMap.containsKey(typeStr)) {
             
@@ -388,7 +388,7 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
         }
         
         // ensure this datatype's handlers etc are loaded such that the dataTypeDiscardIntervalCache and validators are filled as well
-        List<DataTypeHandler<K1>> typeHandlers = loadDataType(value.getDataType().typeName(), context);
+        List<DataTypeHandler<K1>> typeHandlers = loadDataTypeHandlers(value.getDataType().typeName(), context);
         
         // This is a little bit fragile, but there is no other way
         // to get the context on a partitioner, and we are only
@@ -432,7 +432,7 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
             
             try {
                 // Load error dataType into typeMap
-                loadDataType(TypeRegistry.ERROR_PREFIX, context);
+                loadDataTypeHandlers(TypeRegistry.ERROR_PREFIX, context);
                 
                 // purge event
                 errorSummary.purge(contextWriter, context, value, typeMap);
@@ -468,20 +468,20 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
         // Add the list of handlers with the ALL specified handlers
         List<DataTypeHandler<K1>> handlers = new ArrayList<>();
         handlers.addAll(typeHandlers);
-        handlers.addAll(loadDataType(TypeRegistry.ALL_PREFIX, context));
+        handlers.addAll(loadDataTypeHandlers(TypeRegistry.ALL_PREFIX, context));
         
         // Always include any event errors in the counters
         for (String error : value.getErrors()) {
             getCounter(context, IngestInput.EVENT_ERROR_TYPE.name(), error).increment(1);
         }
-        
+
         // switch over to the errorHandlerList if still a fatal error
         if (value.fatalError()) {
             // now clear out the handlers to avoid processing this event
             handlers.clear();
             if (!value.ignorableError()) {
                 // since this is not an ignorable error, lets add the error handlers back into the list
-                handlers.addAll(loadDataType(TypeRegistry.ERROR_PREFIX, context));
+                handlers.addAll(loadDataTypeHandlers(TypeRegistry.ERROR_PREFIX, context));
                 
                 getCounter(context, IngestInput.EVENT_FATAL_ERROR).increment(1);
                 getCounter(context, IngestInput.EVENT_FATAL_ERROR.name(), "ValidationError").increment(1);
@@ -491,6 +491,11 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
             }
             
             context.progress();
+        } else {
+            // processEvent does more than just execute the handlers.
+
+            // attempt to processEvent with all the handlers
+            // if there is a failure, try once more with the handlers cleared
         }
         
         Multimap<String,NormalizedContentInterface> fields = HashMultimap.create();
@@ -500,42 +505,14 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
             // Rollback anything written for this event
             contextWriter.rollback();
             
-            // Fail job on constraint violations
-            if (e instanceof ConstraintChecker.ConstraintViolationException) {
-                throw ((RuntimeException) e);
-            }
-            
+            failJobOnConstraintViolations(e);
+
             // ensure they know we are still working on it
             context.progress();
             
-            // log error
             log.error("Runtime exception processing event", e);
-            
-            // now lets dump to the errors table
-            // first set the exception on the event if not a field normalization error in which case the fields contain the errors
-            if (!(e instanceof FieldNormalizationError)) {
-                value.setAuxData(e);
-            }
-            for (DataTypeHandler<K1> handler : loadDataType(TypeRegistry.ERROR_PREFIX, context)) {
-                if (log.isTraceEnabled())
-                    log.trace("executing handler: " + handler.getClass().getName());
-                try {
-                    executeHandler(key, value, fields, handler, context);
-                    context.progress();
-                } catch (Exception e2) {
-                    // This is a real bummer, we had a critical exception attempting to throw the event into the error table.
-                    // lets terminate this job
-                    log.error("Failed to process error data handlers for an event", e2);
-                    throw new IOException("Failed to process error data handlers for an event", e2);
-                }
-            }
-            
-            // now create some counters
-            getCounter(context, IngestProcess.RUNTIME_EXCEPTION).increment(1);
-            List<String> exceptions = getExceptionSynopsis(e);
-            for (String exception : exceptions) {
-                getCounter(context, IngestProcess.RUNTIME_EXCEPTION.name(), exception).increment(1);
-            }
+            writeToErrorTables(key, value, context, fields, e);
+            incrementExceptionCounters(context, e);
         } finally {
             // Remove ORIG_FILE from NDC that was populated by reprocessing events from the error tables
             if (reprocessedNDCPush) {
@@ -559,7 +536,47 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
             metricsService.collect(Metric.MILLIS_IN_EVENT_MAPPER, metricsLabels.get(), fields, timeInEventMapper);
         }
     }
-    
+
+    private void failJobOnConstraintViolations(Exception e) {
+        if (e instanceof ConstraintChecker.ConstraintViolationException) {
+            throw ((RuntimeException) e);
+        }
+    }
+
+    private void writeToErrorTables(K1 key, V1 value, Context context, Multimap<String, NormalizedContentInterface> fields, Exception e) throws IOException {
+        // now lets dump to the errors table
+        // first set the exception on the event if not a field normalization error in which case the fields contain the errors
+        if (!(e instanceof FieldNormalizationError)) {
+            value.setAuxData(e);
+        }
+        executeErrorHandlers(key, value, context, fields);
+    }
+
+    private void incrementExceptionCounters(Context context, Exception e) {
+        // now create some counters
+        getCounter(context, IngestProcess.RUNTIME_EXCEPTION).increment(1);
+        List<String> exceptions = getExceptionSynopsis(e);
+        for (String exception : exceptions) {
+            getCounter(context, IngestProcess.RUNTIME_EXCEPTION.name(), exception).increment(1);
+        }
+    }
+
+    private void executeErrorHandlers(K1 key, V1 value, Context context, Multimap<String, NormalizedContentInterface> fields) throws IOException {
+        for (DataTypeHandler<K1> handler : loadDataTypeHandlers(TypeRegistry.ERROR_PREFIX, context)) {
+            if (log.isTraceEnabled())
+                log.trace("executing handler: " + handler.getClass().getName());
+            try {
+                executeHandler(key, value, fields, handler, context);
+                context.progress();
+            } catch (Exception e2) {
+                // This is a real bummer, we had a critical exception attempting to throw the event into the error table.
+                // lets terminate this job
+                log.error("Failed to process error data handlers for an event", e2);
+                throw new IOException("Failed to process error data handlers for an event", e2);
+            }
+        }
+    }
+
     /**
      * Get an exception synopsis that is suitable as a counter. We want at a minimum the exception name and a useful location. A useful location is defined as
      * the highest location that is in the datawave.ingest package
@@ -696,12 +713,22 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
             if (null == previousHelper || !previousHelper.getClass().getName().equals(thisHelper.getClass().getName())) {
                 fields.clear();
                 Throwable e = null;
-                for (Map.Entry<String,NormalizedContentInterface> entry : getFields(value, handler).entries()) {
-                    // noinspection ThrowableResultOfMethodCallIgnored
-                    if (entry.getValue().getError() != null) {
-                        e = entry.getValue().getError();
+                // is getFields overridden?  must be if it's public
+                IngestHelperInterface ingestHelper = handler.getHelper(value.getDataType());
+                try {
+                    for (Map.Entry<String, NormalizedContentInterface> entry : getFields(value, handler).entries()) {
+                        // noinspection ThrowableResultOfMethodCallIgnored
+                        if (entry.getValue().getError() != null) {
+                            e = entry.getValue().getError();
+                        }
+                        fields.put(entry.getKey(), entry.getValue());
                     }
-                    fields.put(entry.getKey(), entry.getValue());
+                } catch (Exception exception){
+                    if (ingestHelper instanceof FieldSalvager) {
+                        FieldSalvager salvager = (FieldSalvager) ingestHelper;
+                        fields.putAll(salvager.getSalvageableEventFields(value));
+                    }
+                    throw exception;
                 }
                 if (e != null) {
                     throw new FieldNormalizationError("Failed getting all fields", e);
@@ -739,69 +766,71 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
     }
     
     public Multimap<String,NormalizedContentInterface> getFields(RawRecordContainer value, DataTypeHandler<K1> handler) throws Exception {
-        Multimap<String,NormalizedContentInterface> newFields;
+        IngestHelperInterface ingestHelper = handler.getHelper(value.getDataType());
+
         // Parse the event into its field names and field values using the DataTypeHandler's BaseIngestHelper object.
-        newFields = handler.getHelper(value.getDataType()).getEventFields(value);
-        
+        Multimap<String,NormalizedContentInterface> newFields = ingestHelper.getEventFields(value);
+
         // Also get the virtual fields, if applicable.
-        if (handler.getHelper(value.getDataType()) instanceof VirtualIngest) {
-            VirtualIngest vHelper = (VirtualIngest) handler.getHelper(value.getDataType());
+        if (ingestHelper instanceof VirtualIngest) {
+            VirtualIngest vHelper = (VirtualIngest) ingestHelper;
             Multimap<String,NormalizedContentInterface> virtualFields = vHelper.getVirtualFields(newFields);
             for (Entry<String,NormalizedContentInterface> v : virtualFields.entries())
                 newFields.put(v.getKey(), v.getValue());
         }
         // Also get the composite fields, if applicable
-        if (handler.getHelper(value.getDataType()) instanceof CompositeIngest) {
-            CompositeIngest vHelper = (CompositeIngest) handler.getHelper(value.getDataType());
+        if (ingestHelper instanceof CompositeIngest) {
+            CompositeIngest vHelper = (CompositeIngest) ingestHelper;
             Multimap<String,NormalizedContentInterface> compositeFields = vHelper.getCompositeFields(newFields);
             for (String fieldName : compositeFields.keySet()) {
                 // if this is an overloaded composite field, we are replacing the existing field data
-                if (vHelper.isOverloadedCompositeField(fieldName))
+                if (vHelper.isOverloadedCompositeField(fieldName)) {
                     newFields.removeAll(fieldName);
+                }
                 newFields.putAll(fieldName, compositeFields.get(fieldName));
             }
         }
-        
+
         // Create a LOAD_DATE parameter, which is the current time in milliseconds, for all datatypes
         long loadDate = now.get();
         NormalizedFieldAndValue loadDateValue = new NormalizedFieldAndValue(LOAD_DATE_FIELDNAME, Long.toString(loadDate));
         // set an indexed field value for use by the date index data type handler
         loadDateValue.setIndexedFieldValue(dateNormalizer.normalizeDelegateType(new Date(loadDate)));
         newFields.put(LOAD_DATE_FIELDNAME, loadDateValue);
-        
+
         String seqFileName = null;
-        
+
         // place the sequence filename into the event
         if (createSequenceFileName) {
             seqFileName = NDC.peek();
-            
+
             if (trimSequenceFileName) {
                 seqFileName = StringUtils.substringAfterLast(seqFileName, "/");
             }
-            
+
             if (null != seqFileName) {
                 StringBuilder seqFile = new StringBuilder(seqFileName);
-                
+
                 seqFile.append(SRC_FILE_DEL).append(offset);
-                
+
                 if (null != splitStart) {
                     seqFile.append(SRC_FILE_DEL).append(splitStart);
                 }
-                
+
                 newFields.put(SEQUENCE_FILE_FIELDNAME, new NormalizedFieldAndValue(SEQUENCE_FILE_FIELDNAME, seqFile.toString()));
             }
         }
-        
+
         if (createRawFileName && !value.getRawFileName().isEmpty() && !value.getRawFileName().equals(seqFileName)) {
             newFields.put(RAW_FILE_FIELDNAME, new NormalizedFieldAndValue(RAW_FILE_FIELDNAME, value.getRawFileName()));
         }
-        
+
         // Also if this helper needs to filter the fields before returning, apply now
-        if (handler.getHelper(value.getDataType()) instanceof FilterIngest) {
-            FilterIngest fHelper = (FilterIngest) handler.getHelper(value.getDataType());
+        if (ingestHelper instanceof FilterIngest) {
+            FilterIngest fHelper = (FilterIngest) ingestHelper;
             fHelper.filter(newFields);
         }
-        
+
         return newFields;
     }
     
