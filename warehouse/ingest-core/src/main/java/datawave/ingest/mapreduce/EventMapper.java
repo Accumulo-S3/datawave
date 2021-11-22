@@ -509,10 +509,8 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
 
             // ensure they know we are still working on it
             context.progress();
-            
-            log.error("Runtime exception processing event", e);
-            writeToErrorTables(key, value, context, fields, e);
-            incrementExceptionCounters(context, e);
+
+            handleProcessingError(key, value, context, fields, e);
         } finally {
             // Remove ORIG_FILE from NDC that was populated by reprocessing events from the error tables
             if (reprocessedNDCPush) {
@@ -537,31 +535,24 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
         }
     }
 
+    private void handleProcessingError(K1 key, V1 value, Context context, Multimap<String, NormalizedContentInterface> fields, Exception e) throws IOException {
+        log.error("Runtime exception processing event", e);
+        // first set the exception on the event if not a field normalization error in which case the fields contain the errors
+        if (!(e instanceof FieldNormalizationError)) {
+            value.setAuxData(e);
+        }
+        writeToErrorTables(key, value, context, fields);
+        incrementExceptionCounters(context, e);
+    }
+
     private void failJobOnConstraintViolations(Exception e) {
         if (e instanceof ConstraintChecker.ConstraintViolationException) {
             throw ((RuntimeException) e);
         }
     }
 
-    private void writeToErrorTables(K1 key, V1 value, Context context, Multimap<String, NormalizedContentInterface> fields, Exception e) throws IOException {
+    private void writeToErrorTables(K1 key, V1 value, Context context, Multimap<String, NormalizedContentInterface> fields) throws IOException {
         // now lets dump to the errors table
-        // first set the exception on the event if not a field normalization error in which case the fields contain the errors
-        if (!(e instanceof FieldNormalizationError)) {
-            value.setAuxData(e);
-        }
-        executeErrorHandlers(key, value, context, fields);
-    }
-
-    private void incrementExceptionCounters(Context context, Exception e) {
-        // now create some counters
-        getCounter(context, IngestProcess.RUNTIME_EXCEPTION).increment(1);
-        List<String> exceptions = getExceptionSynopsis(e);
-        for (String exception : exceptions) {
-            getCounter(context, IngestProcess.RUNTIME_EXCEPTION.name(), exception).increment(1);
-        }
-    }
-
-    private void executeErrorHandlers(K1 key, V1 value, Context context, Multimap<String, NormalizedContentInterface> fields) throws IOException {
         for (DataTypeHandler<K1> handler : loadDataTypeHandlers(TypeRegistry.ERROR_PREFIX, context)) {
             if (log.isTraceEnabled())
                 log.trace("executing handler: " + handler.getClass().getName());
@@ -574,6 +565,15 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
                 log.error("Failed to process error data handlers for an event", e2);
                 throw new IOException("Failed to process error data handlers for an event", e2);
             }
+        }
+    }
+
+    private void incrementExceptionCounters(Context context, Exception e) {
+        // now create some counters
+        getCounter(context, IngestProcess.RUNTIME_EXCEPTION).increment(1);
+        List<String> exceptions = getExceptionSynopsis(e);
+        for (String exception : exceptions) {
+            getCounter(context, IngestProcess.RUNTIME_EXCEPTION.name(), exception).increment(1);
         }
     }
 
@@ -726,7 +726,10 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
                 } catch (Exception exception){
                     if (ingestHelper instanceof FieldSalvager) {
                         FieldSalvager salvager = (FieldSalvager) ingestHelper;
-                        fields.putAll(salvager.getSalvageableEventFields(value));
+                        Multimap<String, ? extends NormalizedContentInterface> salvagedFields = salvager.getSalvageableEventFields(value);
+                        if (null != salvagedFields) {
+                            fields.putAll(salvagedFields);
+                        }
                     }
                     throw exception;
                 }
