@@ -3,7 +3,7 @@ package datawave.ingest.csv.config.helper;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import datawave.util.IngestTestSetup;
+import datawave.util.TypeRegistryTestSetup;
 
 import org.apache.hadoop.conf.Configuration;
 import org.junit.Test;
@@ -17,7 +17,7 @@ public class ExtendedCSVHelperTest {
         conf.addResource(this.getClass().getClassLoader().getResource("config/ingest/csv-ingest-config.xml"));
         conf.set("data.name.override", "datanameoverride");
         
-        IngestTestSetup.resetTypeRegistry(conf);
+        TypeRegistryTestSetup.resetTypeRegistry(conf);
         
         ExtendedCSVHelper helper = new ExtendedCSVHelper();
         helper.setup(conf);

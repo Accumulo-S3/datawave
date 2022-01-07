@@ -25,7 +25,7 @@ import datawave.ingest.test.StandaloneStatusReporter;
 import datawave.ingest.test.StandaloneTaskAttemptContext;
 import datawave.ingest.time.Now;
 import datawave.metadata.protobuf.EdgeMetadata;
-import datawave.util.IngestTestSetup;
+import datawave.util.TypeRegistryTestSetup;
 import datawave.util.TableName;
 import datawave.util.time.DateHelper;
 import org.apache.accumulo.core.data.Key;
@@ -128,7 +128,7 @@ public class ProtobufEdgeDeleteModeTest {
         conf.addResource(ClassLoader.getSystemResource("config/all-config.xml"));
         conf.addResource(ClassLoader.getSystemResource("config/edge-ingest-config.xml"));
         conf.addResource(ClassLoader.getSystemResource("config/metadata-config.xml"));
-        IngestTestSetup.resetTypeRegistryWithTypes(conf, type);
+        TypeRegistryTestSetup.resetTypeRegistryWithTypes(conf, type);
     }
     
     private RawRecordContainer getEvent(Configuration conf) {

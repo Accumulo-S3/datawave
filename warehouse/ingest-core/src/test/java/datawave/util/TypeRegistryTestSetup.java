@@ -4,7 +4,7 @@ import datawave.ingest.data.Type;
 import datawave.ingest.data.TypeRegistry;
 import org.apache.hadoop.conf.Configuration;
 
-public class IngestTestSetup {
+public class TypeRegistryTestSetup {
     public static TypeRegistry resetTypeRegistry(Configuration conf) {
         TypeRegistry.reset();
         return TypeRegistry.getInstance(conf);
