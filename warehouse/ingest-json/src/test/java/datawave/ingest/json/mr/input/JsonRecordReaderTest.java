@@ -38,8 +38,7 @@ public class JsonRecordReaderTest {
         URL data = JsonRecordReaderTest.class.getResource("/input/my.json");
         Assert.assertNotNull(data);
         
-        TypeRegistry.reset();
-        TypeRegistry.getInstance(conf);
+        IngestTestSetup.resetTypeRegistry(conf);
         
         dataFile = new File(data.toURI());
         Path p = new Path(dataFile.toURI().toString());

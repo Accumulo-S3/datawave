@@ -14,6 +14,7 @@ import datawave.ingest.data.config.ingest.ContentBaseIngestHelper;
 import datawave.ingest.mapreduce.handler.shard.AbstractColumnBasedHandler;
 import datawave.ingest.mapreduce.job.BulkIngestKey;
 import datawave.query.config.ShardQueryConfiguration;
+import datawave.util.IngestTestSetup;
 import datawave.webservice.edgedictionary.RemoteEdgeDictionary;
 import datawave.query.jexl.JexlASTHelper;
 import datawave.query.jexl.visitors.GeoWaveQueryInfoVisitor;
@@ -159,10 +160,8 @@ public class GeoSortedQueryDataTest {
         setupEnvVariables();
         conf.addResource(ClassLoader.getSystemResource("datawave/query/tables/geo-test-config.xml"));
         resolveEnvVariables(conf);
-        
-        TypeRegistry.reset();
-        TypeRegistry registry = TypeRegistry.getInstance(conf);
-        
+
+        TypeRegistry registry = IngestTestSetup.resetTypeRegistry(conf);
         TaskAttemptContext ctx = new TaskAttemptContextImpl(conf, new TaskAttemptID());
         
         AbstractColumnBasedHandler<Text> dataTypeHandler = new AbstractColumnBasedHandler<>();

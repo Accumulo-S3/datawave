@@ -184,16 +184,14 @@ public class JsonIngestHelperTest {
         
         conf.set("myjson.data.json.flattener.mode", mode.name());
         
-        TypeRegistry.reset();
-        TypeRegistry.getInstance(conf);
+        IngestTestSetup.resetTypeRegistry(conf);
         
         return conf;
     }
     
     protected JsonIngestHelper init(Configuration conf) throws Exception {
         
-        TypeRegistry.reset();
-        TypeRegistry.getInstance(conf);
+        IngestTestSetup.resetTypeRegistry(conf);
         
         JsonIngestHelper ingestHelper = new JsonIngestHelper();
         ingestHelper.setup(conf);

@@ -12,6 +12,7 @@ import datawave.ingest.mapreduce.job.metrics.Metric;
 import datawave.ingest.mapreduce.job.metrics.MetricsConfiguration;
 import datawave.ingest.mapreduce.job.metrics.TestEventCountMetricsReceiver;
 import datawave.ingest.mapreduce.job.writer.ContextWriter;
+import datawave.util.IngestTestSetup;
 import org.apache.accumulo.core.data.Value;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.LongWritable;
@@ -53,11 +54,9 @@ public class EventMapperTest {
         
         Type type = new Type("file", null, null, new String[] {SimpleDataTypeHandler.class.getName()}, 10, null);
         Type errorType = new Type(TypeRegistry.ERROR_PREFIX, null, null, new String[] {SimpleDataTypeHandler.class.getName()}, 20, null);
-        
-        TypeRegistry registry = TypeRegistry.getInstance(conf);
-        registry.put(type.typeName(), type);
-        registry.put(errorType.typeName(), errorType);
-        
+
+        IngestTestSetup.resetTypeRegistryWithTypes(conf, type, errorType);
+
         Multimap<String,NormalizedContentInterface> fields = HashMultimap.create();
         fields.put("fileExtension", new BaseNormalizedContent("fileExtension", "gz"));
         fields.put("lastModified", new BaseNormalizedContent("lastModified", "2016-01-01"));

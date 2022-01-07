@@ -118,7 +118,7 @@ public class ContentJsonColumnBasedHandlerTest {
         conf.addResource(ClassLoader.getSystemResource("config/ingest/tvmaze-ingest-config.xml"));
         conf.addResource(ClassLoader.getSystemResource("config/ingest/edge-ingest-config.xml"));
         conf.addResource(ClassLoader.getSystemResource("config/ingest/metadata-config.xml"));
-        TypeRegistry.getInstance(conf);
+        IngestTestSetup.resetTypeRegistry(conf);
         JsonDataTypeHelper helper = new JsonDataTypeHelper();
         helper.setup(conf);
         

@@ -63,7 +63,7 @@ public class NYCTLCColumnBasedHandlerTest {
         conf.addResource(ClassLoader.getSystemResource("config/ingest/all-config.xml"));
         conf.addResource(ClassLoader.getSystemResource("config/ingest/nyctlc-config.xml"));
         conf.addResource(ClassLoader.getSystemResource("config/ingest/metadata-config.xml"));
-        TypeRegistry.getInstance(conf);
+        IngestTestSetup.resetTypeRegistry(conf);
         NYCTLCHelper helper = new NYCTLCHelper();
         helper.setup(conf);
         

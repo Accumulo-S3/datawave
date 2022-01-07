@@ -115,7 +115,7 @@ public class ContentCSVIndexingColumnBasedHandlerTest {
         conf.addResource(ClassLoader.getSystemResource("config/ingest/csv-ingest-config.xml"));
         conf.addResource(ClassLoader.getSystemResource("config/ingest/edge-ingest-config.xml"));
         conf.addResource(ClassLoader.getSystemResource("config/ingest/metadata-config.xml"));
-        TypeRegistry.getInstance(conf);
+        IngestTestSetup.resetTypeRegistry(conf);
         ExtendedCSVHelper helper = new ExtendedCSVHelper();
         helper.setup(conf);
         

@@ -61,8 +61,7 @@ public class WikipediaTestBed {
         conf.set(BaseIngestHelper.DEFAULT_TYPE, LcNoDiacriticsType.class.getName());
         conf.setBoolean(ExtendedContentIndexingColumnBasedHandler.OPT_OFFLINE, true);
         
-        TypeRegistry.reset();
-        TypeRegistry.getInstance(conf);
+        IngestTestSetup.resetTypeRegistry(conf);
         
         this.split = getSplit("/input/enwiki-20130305-pages-articles-brief.xml");
         

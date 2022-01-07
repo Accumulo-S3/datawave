@@ -4,6 +4,7 @@ import datawave.common.test.logging.CommonTestAppender;
 import datawave.ingest.data.TypeRegistry;
 import datawave.data.hash.UID;
 import datawave.ingest.mapreduce.handler.shard.ShardedDataTypeHandler;
+import datawave.util.IngestTestSetup;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.ClientConfiguration;
 import org.apache.accumulo.core.client.mapreduce.AccumuloOutputFormat;
@@ -170,8 +171,6 @@ public class CBMutationOutputFormatterTest {
         uutLogger.addAppender(uutAppender);
         
         Logger.getLogger(AccumuloOutputFormat.class).addAppender(uutAppender);
-        
-        TypeRegistry.reset();
     }
     
     @After
@@ -513,7 +512,7 @@ public class CBMutationOutputFormatterTest {
             
             conf.addResource(url);
             
-            TypeRegistry.getInstance(conf);
+            IngestTestSetup.resetTypeRegistry(conf);
             
             String simulationKey = String.format("%s.%s.%s", AccumuloOutputFormat.class.getSimpleName(), Features.SIMULATION_MODE.getDeclaringClass()
                             .getSimpleName(), StringUtils.camelize(Features.SIMULATION_MODE.name().toLowerCase()));
@@ -573,7 +572,7 @@ public class CBMutationOutputFormatterTest {
             
             conf.addResource(url);
             
-            TypeRegistry.getInstance(conf);
+            IngestTestSetup.resetTypeRegistry(conf);
             
             String simulationKey = String.format("%s.%s.%s", AccumuloOutputFormat.class.getSimpleName(), Features.SIMULATION_MODE.getDeclaringClass()
                             .getSimpleName(), StringUtils.camelize(Features.SIMULATION_MODE.name().toLowerCase()));
@@ -633,7 +632,7 @@ public class CBMutationOutputFormatterTest {
             
             conf.addResource(url);
             
-            TypeRegistry.getInstance(conf);
+            IngestTestSetup.resetTypeRegistry(conf);
             
             String simulationKey = String.format("%s.%s.%s", AccumuloOutputFormat.class.getSimpleName(), Features.SIMULATION_MODE.getDeclaringClass()
                             .getSimpleName(), StringUtils.camelize(Features.SIMULATION_MODE.name().toLowerCase()));
@@ -695,7 +694,7 @@ public class CBMutationOutputFormatterTest {
             
             conf.addResource(url);
             
-            TypeRegistry.getInstance(conf);
+            IngestTestSetup.resetTypeRegistry(conf);
             
             String simulationKey = String.format("%s.%s.%s", AccumuloOutputFormat.class.getSimpleName(), Features.SIMULATION_MODE.getDeclaringClass()
                             .getSimpleName(), StringUtils.camelize(Features.SIMULATION_MODE.name().toLowerCase()));
@@ -757,7 +756,7 @@ public class CBMutationOutputFormatterTest {
             
             conf.addResource(url);
             
-            TypeRegistry.getInstance(conf);
+            IngestTestSetup.resetTypeRegistry(conf);
             
             String simulationKey = String.format("%s.%s.%s", AccumuloOutputFormat.class.getSimpleName(), Features.SIMULATION_MODE.getDeclaringClass()
                             .getSimpleName(), StringUtils.camelize(Features.SIMULATION_MODE.name().toLowerCase()));
