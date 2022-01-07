@@ -524,11 +524,15 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
         getCounter(context, IngestOutput.EVENTS_PROCESSED.name(), value.getDataType().typeName().toUpperCase()).increment(1);
         
         offset++;
-        
+
+        updateMetrics(value, eventMapperTimer, fields);
+    }
+
+    private void updateMetrics(V1 value, TraceStopwatch eventMapperTimer, Multimap<String, NormalizedContentInterface> fields) {
         if (metricsEnabled && eventMapperTimer != null) {
             eventMapperTimer.stop();
             long timeInEventMapper = eventMapperTimer.elapsed(TimeUnit.MILLISECONDS);
-            
+
             metricsLabels.clear();
             metricsLabels.put("dataType", value.getDataType().typeName());
             metricsService.collect(Metric.MILLIS_IN_EVENT_MAPPER, metricsLabels.get(), fields, timeInEventMapper);
@@ -736,16 +740,9 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
                 if (e != null) {
                     throw new FieldNormalizationError("Failed getting all fields", e);
                 }
-                
-                // Event based metrics
-                if (metricsEnabled) {
-                    metricsLabels.clear();
-                    metricsLabels.put("dataType", value.getDataType().typeName());
-                    
-                    metricsService.collect(Metric.EVENT_COUNT, metricsLabels.get(), fields, 1L);
-                    metricsService.collect(Metric.BYTE_COUNT, metricsLabels.get(), fields, (long) value.getRawData().length);
-                }
-                
+
+                updateMetrics(value, fields);
+
                 previousHelper = thisHelper;
             }
             
@@ -759,7 +756,18 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
             context.progress();
         }
     }
-    
+
+    private void updateMetrics(RawRecordContainer value, Multimap<String, NormalizedContentInterface> fields) {
+        // Event based metrics
+        if (metricsEnabled) {
+            metricsLabels.clear();
+            metricsLabels.put("dataType", value.getDataType().typeName());
+
+            metricsService.collect(Metric.EVENT_COUNT, metricsLabels.get(), fields, 1L);
+            metricsService.collect(Metric.BYTE_COUNT, metricsLabels.get(), fields, (long) value.getRawData().length);
+        }
+    }
+
     private static class FieldNormalizationError extends Exception {
         private static final long serialVersionUID = 1L;
         

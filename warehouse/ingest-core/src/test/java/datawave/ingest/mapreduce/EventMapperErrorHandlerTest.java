@@ -30,7 +30,12 @@ import java.io.ObjectOutputStream;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.easymock.EasyMock.*;
+import static org.easymock.EasyMock.anyObject;
+import static org.easymock.EasyMock.anyString;
+import static org.easymock.EasyMock.expect;
+import static org.easymock.EasyMock.expectLastCall;
+import static org.easymock.EasyMock.replay;
+import static org.easymock.EasyMock.verify;
 import static org.junit.Assert.assertEquals;
 
 public class EventMapperErrorHandlerTest {
@@ -53,7 +58,7 @@ public class EventMapperErrorHandlerTest {
         eventMapper = new EventMapper<>();
         conf = new Configuration();
         conf.setClass(EventMapper.CONTEXT_WRITER_CLASS, TestContextWriter.class, ContextWriter.class);
-        
+
         Type type = new Type("file", null, null, new String[] {OverridingSimpleDataTypeHandler.class.getName()}, 10, null);
         Type errorType = new Type(TypeRegistry.ERROR_PREFIX, null, null, new String[] {SimpleDataTypeHandler.class.getName()}, 20, null);
 
