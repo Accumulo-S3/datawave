@@ -159,7 +159,7 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
     private boolean metricsEnabled = false;
     private MetricsService<K2,V2> metricsService;
     private ReusableMetricsLabels metricsLabels;
-    
+
     /**
      * Set up the datatype handlers
      */
@@ -728,6 +728,7 @@ public class EventMapper<K1,V1 extends RawRecordContainer,K2,V2> extends StatsDE
                         fields.put(entry.getKey(), entry.getValue());
                     }
                 } catch (Exception exception){
+                    // If relevant, attempt to salvage fields before rethrowing exception
                     if (ingestHelper instanceof FieldSalvager) {
                         FieldSalvager salvager = (FieldSalvager) ingestHelper;
                         Multimap<String, ? extends NormalizedContentInterface> salvagedFields = salvager.getSalvageableEventFields(value);

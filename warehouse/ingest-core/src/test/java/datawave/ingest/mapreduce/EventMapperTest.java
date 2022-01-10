@@ -43,67 +43,72 @@ public class EventMapperTest {
     private SimpleRawRecord record;
     private SimpleRawRecord errorRecord;
     private EventMapper<LongWritable,RawRecordContainer,BulkIngestKey,Value> eventMapper;
-    
+
     @Before
     public void setUp() throws Exception {
         long eventTime = System.currentTimeMillis();
-        
+
         eventMapper = new EventMapper<>();
         conf = new Configuration();
         conf.setClass(EventMapper.CONTEXT_WRITER_CLASS, TestContextWriter.class, ContextWriter.class);
-        
-        Type type = new Type("file", null, null, new String[] {SimpleDataTypeHandler.class.getName()}, 10, null);
-        Type errorType = new Type(TypeRegistry.ERROR_PREFIX, null, null, new String[] {SimpleDataTypeHandler.class.getName()}, 20, null);
 
+        String[] defaultDataTypeHandlers = {SimpleDataTypeHandler.class.getName()};
+
+        Type type = new Type("file", null, null, defaultDataTypeHandlers, 10, null);
+        Type errorType = new Type(TypeRegistry.ERROR_PREFIX, null, null, defaultDataTypeHandlers, 20, null);
         TypeRegistryTestSetup.resetTypeRegistryWithTypes(conf, type, errorType);
 
         Multimap<String,NormalizedContentInterface> fields = HashMultimap.create();
         fields.put("fileExtension", new BaseNormalizedContent("fileExtension", "gz"));
         fields.put("lastModified", new BaseNormalizedContent("lastModified", "2016-01-01"));
-        
+
         SimpleDataTypeHelper.registerFields(fields);
-        
-        record = new SimpleRawRecord();
-        record.setRawFileTimestamp(eventTime);
-        record.setDataType(type);
-        record.setDate(eventTime);
-        record.setRawFileName("/some/filename");
-        record.setRawData("some data".getBytes());
-        record.generateId(null);
-        
-        errorRecord = new SimpleRawRecord();
+
+        record = createBasicRecord(eventTime, type);
+
+        errorRecord = createBasicRecord(eventTime, type);
         errorRecord.setRawFileTimestamp(0);
-        errorRecord.setDataType(type);
-        errorRecord.setDate(eventTime);
-        errorRecord.setRawFileName("/some/filename");
-        errorRecord.setRawData("some data".getBytes());
-        errorRecord.generateId(null);
         errorRecord.setRawFileName("");
         errorRecord.addError("EVENT_DATE_MISSING");
         errorRecord.setFatalError(true);
-        
+
+        EventMapperTest.setupMapContextMock(mapContext, conf);
+    }
+
+    static void setupMapContextMock(Mapper.Context mapContext, Configuration conf) throws IOException, InterruptedException {
         expect(mapContext.getConfiguration()).andReturn(conf).anyTimes();
-        
+
         mapContext.progress();
         expectLastCall().anyTimes();
-        
+
         TestContextWriter<BulkIngestKey,Value> testContextWriter = new TestContextWriter<>();
         mapContext.write(anyObject(BulkIngestKey.class), anyObject(Value.class));
         expectLastCall().andDelegateTo(testContextWriter).anyTimes();
-        
+
         expect(mapContext.getInputSplit()).andReturn(null);
         expect(mapContext.getMapOutputValueClass()).andReturn(null);
-        
+
         TaskAttemptID id = new TaskAttemptID();
         expect(mapContext.getTaskAttemptID()).andReturn(id).anyTimes();
-        
+
         StandaloneTaskAttemptContext standaloneContext = new StandaloneTaskAttemptContext(conf, new StandaloneStatusReporter());
         expect(mapContext.getCounter(anyObject())).andDelegateTo(standaloneContext).anyTimes();
         expect(mapContext.getCounter(anyString(), anyString())).andDelegateTo(standaloneContext).anyTimes();
-        
+
         replay(mapContext);
     }
-    
+
+    static SimpleRawRecord createBasicRecord(long eventTime, Type type) {
+        SimpleRawRecord result = new SimpleRawRecord();
+        result.setDate(eventTime);
+        result.setRawFileTimestamp(eventTime);
+        result.setDataType(type);
+        result.setRawFileName("/some/filename");
+        result.setRawData("some data".getBytes());
+        result.generateId(null);
+        return result;
+    }
+
     @After
     public void checkMock() {
         verify(mapContext);
