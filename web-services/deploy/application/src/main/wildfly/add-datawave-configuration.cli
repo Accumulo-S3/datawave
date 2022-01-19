@@ -122,7 +122,6 @@ module add --name=com.mysql.driver --dependencies=javax.api,javax.transaction.ap
 /system-property=dw.remoteAccumuloService.port:add(value=${accumulo.remoteservice.port})
 
 # QueryMetric microservice config
-/system-property=dw.remoteQueryMetricService.enabled:add(value=${querymetric.remoteservice.enabled})
 /system-property=dw.remoteQueryMetricService.useSrvDnsLookup:add(value=${querymetric.remoteservice.srv.lookup.enabled})
 /system-property=dw.remoteQueryMetricService.srvDnsServers:add(value=${querymetric.remoteservice.srv.lookup.servers})
 /system-property=dw.remoteQueryMetricService.srvDnsPort:add(value=${querymetric.remoteservice.srv.lookup.port})
