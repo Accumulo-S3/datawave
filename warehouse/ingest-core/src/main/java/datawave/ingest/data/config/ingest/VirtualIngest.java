@@ -2,6 +2,7 @@ package datawave.ingest.data.config.ingest;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -11,7 +12,9 @@ import java.util.Set;
 import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
+import com.google.common.collect.Iterables;
 import datawave.data.type.NoOpType;
 import datawave.ingest.data.Type;
 import datawave.ingest.data.config.GroupedNormalizedContentInterface;
@@ -21,6 +24,8 @@ import datawave.ingest.data.config.NormalizedFieldAndValue;
 import datawave.marking.MarkingFunctions;
 import org.apache.commons.lang.NotImplementedException;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.builder.HashCodeBuilder;
+import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.hadoop.conf.Configuration;
 
 import com.google.common.base.Objects;
@@ -354,9 +359,11 @@ public interface VirtualIngest {
                 compilePatterns();
             if (this.virtualFieldDefinitions != null && !this.virtualFieldDefinitions.isEmpty()) {
                 List<NormalizedContentInterface> tempResults = new ArrayList<>();
+                Map<String,Multimap<VirtualFieldGrouping,NormalizedContentInterface>> groupedEventFields = new HashMap<>();
                 for (Entry<String,String[]> vFields : this.virtualFieldDefinitions.entrySet()) {
                     tempResults.clear();
-                    addVirtualFields(tempResults, eventFields, vFields.getKey(), null, null, grouping.get(vFields.getKey()),
+                    GroupingPolicy groupingPolicy = grouping.get(vFields.getKey());
+                    addVirtualFields(tempResults, eventFields, groupedEventFields, vFields.getKey(), null, null, groupingPolicy,
                                     allowMissing.get(vFields.getKey()), vFields.getValue(), 0, "", "", // separator is initially empty
                                     new StringBuilder(), new StringBuilder(), null);
                     for (NormalizedContentInterface value : tempResults) {
@@ -366,6 +373,21 @@ public interface VirtualIngest {
             }
             
             return virtualFields;
+        }
+        
+        private void updateGroupedEventFields(Multimap<String,NormalizedContentInterface> eventFields, String field,
+                        Map<String,Multimap<VirtualFieldGrouping,NormalizedContentInterface>> groupedEventFields) {
+            if (!groupedEventFields.containsKey(field) && eventFields.containsKey(field)) {
+                groupedEventFields.put(field, groupFields(eventFields.get(field)));
+            }
+        }
+        
+        private Multimap<VirtualFieldGrouping,NormalizedContentInterface> groupFields(Collection<NormalizedContentInterface> fields) {
+            Multimap<VirtualFieldGrouping,NormalizedContentInterface> groups = HashMultimap.create();
+            for (NormalizedContentInterface field : fields) {
+                groups.put(getGrouping(field), field);
+            }
+            return groups;
         }
         
         private void compilePatterns() {
@@ -383,11 +405,58 @@ public interface VirtualIngest {
             compiledFieldPatterns = patterns;
         }
         
+        public class VirtualFieldGrouping {
+            private final String group0;
+            private final String group1;
+            
+            public VirtualFieldGrouping(String group0, String group1) {
+                this.group0 = group0;
+                this.group1 = group1;
+            }
+            
+            public String getGroup1() {
+                return group1;
+            }
+            
+            public String getGroup0() {
+                return group0;
+            }
+            
+            public String get(int group) {
+                if (group == 0) {
+                    return group0;
+                } else if (group == 1) {
+                    return group1;
+                } else {
+                    throw new IllegalArgumentException("Illegal group " + group);
+                }
+            }
+            
+            @Override
+            public int hashCode() {
+                return new HashCodeBuilder().append(group0).append(group1).toHashCode();
+            }
+            
+            @Override
+            public boolean equals(Object obj) {
+                if (obj instanceof VirtualFieldGrouping) {
+                    VirtualFieldGrouping other = (VirtualFieldGrouping) obj;
+                    return new EqualsBuilder().append(group0, other.group0).append(group1, other.group1).isEquals();
+                }
+                return false;
+            }
+            
+            @Override
+            public String toString() {
+                return group0 + '.' + group1;
+            }
+        }
+        
         // Create the virtual field from the event Fields members
         public void addVirtualFields(List<NormalizedContentInterface> virtualFields, Multimap<String,NormalizedContentInterface> eventFields,
-                        String virtualFieldName, String replacement, String[] grouping, GroupingPolicy groupingPolicy, boolean allowMissing, String[] fields,
-                        int pos, String startSeparator, String endSeparator, StringBuilder originalValue, StringBuilder normalizedValue,
-                        Map<String,String> markings) {
+                        Map<String,Multimap<VirtualFieldGrouping,NormalizedContentInterface>> groupings, String virtualFieldName, String replacement,
+                        VirtualFieldGrouping grouping, GroupingPolicy groupingPolicy, boolean allowMissing, String[] fields, int pos, String startSeparator,
+                        String endSeparator, StringBuilder originalValue, StringBuilder normalizedValue, Map<String,String> markings) {
             String separator = "";
             // append any constants that have been specified
             while (pos < fields.length && isConstant(fields[pos])) {
@@ -421,9 +490,10 @@ public interface VirtualIngest {
                             replacement = matcher.group(1);
                             int oLen = originalValue.length();
                             int nLen = normalizedValue.length();
-                            for (NormalizedContentInterface value : eventFields.get(key)) {
-                                String[] newGrouping = getGrouping(value, groupingPolicy);
-                                if (oLen != 0 || nLen != 0) {
+                            boolean firstField = (oLen == 0 && nLen == 0);
+                            for (NormalizedContentInterface value : getEventFields(firstField, key, groupingPolicy, grouping, eventFields, groupings)) {
+                                VirtualFieldGrouping newGrouping = getGrouping(value, groupingPolicy);
+                                if (!firstField) {
                                     if (!matchingGrouping(grouping, newGrouping, groupingPolicy)) {
                                         continue;
                                     }
@@ -436,7 +506,7 @@ public interface VirtualIngest {
                                 normalizedValue.append(value.getIndexedFieldValue());
                                 normalizedValue.append(endSeparator);
                                 if (pos + 1 < fields.length) {
-                                    addVirtualFields(virtualFields, eventFields, virtualFieldName.replace("*", replacement), replacement,
+                                    addVirtualFields(virtualFields, eventFields, groupings, virtualFieldName.replace("*", replacement), replacement,
                                                     (grouping == null ? newGrouping : grouping), groupingPolicy, allowMissing, fields, pos + 1,
                                                     this.defaultStartSeparator, this.defaultEndSeparator, originalValue, normalizedValue,
                                                     mergeMarkings(markings, value.getMarkings()));
@@ -447,14 +517,15 @@ public interface VirtualIngest {
                         }
                     }
                 } else if (!eventFields.containsKey(memberName) && allowMissing) {
-                    addVirtualFields(virtualFields, eventFields, virtualFieldName, replacement, grouping, groupingPolicy, allowMissing, fields, pos + 1,
-                                    startSeparator, endSeparator, originalValue, normalizedValue, markings);
+                    addVirtualFields(virtualFields, eventFields, groupings, virtualFieldName, replacement, grouping, groupingPolicy, allowMissing, fields,
+                                    pos + 1, startSeparator, endSeparator, originalValue, normalizedValue, markings);
                 } else {
                     int oLen = originalValue.length();
                     int nLen = normalizedValue.length();
-                    for (NormalizedContentInterface value : eventFields.get(memberName)) {
-                        String[] newGrouping = getGrouping(value, groupingPolicy);
-                        if (oLen != 0 || nLen != 0) {
+                    boolean firstField = (oLen == 0 && nLen == 0);
+                    for (NormalizedContentInterface value : getEventFields(firstField, memberName, groupingPolicy, grouping, eventFields, groupings)) {
+                        VirtualFieldGrouping newGrouping = getGrouping(value, groupingPolicy);
+                        if (!firstField) {
                             if (!matchingGrouping(grouping, newGrouping, groupingPolicy)) {
                                 continue;
                             }
@@ -469,7 +540,7 @@ public interface VirtualIngest {
                             normalizedValue.append(value.getIndexedFieldValue());
                         }
                         normalizedValue.append(endSeparator);
-                        addVirtualFields(virtualFields, eventFields, virtualFieldName, replacement, (grouping == null ? newGrouping : grouping),
+                        addVirtualFields(virtualFields, eventFields, groupings, virtualFieldName, replacement, (grouping == null ? newGrouping : grouping),
                                         groupingPolicy, allowMissing, fields, pos + 1, this.defaultStartSeparator, this.defaultEndSeparator, originalValue,
                                         normalizedValue, mergeMarkings(markings, value.getMarkings()));
                         originalValue.setLength(oLen);
@@ -484,10 +555,36 @@ public interface VirtualIngest {
                 n.setMarkings(markings);
                 if (grouping != null) {
                     n.setGrouped(true);
-                    n.setGroup(grouping[0]);
-                    n.setSubGroup(grouping[1]);
+                    n.setGroup(grouping.getGroup0());
+                    n.setSubGroup(grouping.getGroup1());
                 }
                 virtualFields.add(n);
+            }
+        }
+        
+        private Iterable<NormalizedContentInterface> getEventFields(boolean firstField, String field, GroupingPolicy groupingPolicy,
+                        VirtualFieldGrouping grouping, Multimap<String,NormalizedContentInterface> eventFields,
+                        Map<String,Multimap<VirtualFieldGrouping,NormalizedContentInterface>> groupings) {
+            if (firstField) {
+                return eventFields.get(field);
+            }
+            switch (groupingPolicy) {
+                case GROUPED_WITH_NON_GROUPED:
+                    updateGroupedEventFields(eventFields, field, groupings);
+                    if (grouping == null) {
+                        // if this grouping is null, then we can match with anything
+                        return eventFields.get(field);
+                    } else {
+                        // if we have a grouping, then we can match those with the same grouping or no grouping
+                        return Iterables.concat(groupings.get(field).get(null), groupings.get(field).get(grouping));
+                    }
+                case SAME_GROUP_ONLY:
+                    updateGroupedEventFields(eventFields, field, groupings);
+                    // only return those with the same grouping
+                    return groupings.get(field).get(grouping);
+                default:
+                    // by default grouping does not matter
+                    return eventFields.get(field);
             }
         }
         
@@ -501,7 +598,7 @@ public interface VirtualIngest {
             return name.substring(1, name.length() - 1);
         }
         
-        private boolean matchingGrouping(String[] grouping, String[] newGrouping, GroupingPolicy groupingPolicy) {
+        private boolean matchingGrouping(VirtualFieldGrouping grouping, VirtualFieldGrouping newGrouping, GroupingPolicy groupingPolicy) {
             switch (groupingPolicy) {
                 case SAME_GROUP_ONLY:
                     if (grouping == null) {
@@ -509,13 +606,13 @@ public interface VirtualIngest {
                     } else if (newGrouping == null) {
                         return false;
                     } else {
-                        return (equals(grouping[0], newGrouping[0]) && equals(grouping[1], newGrouping[1]));
+                        return grouping.equals(newGrouping);
                     }
                 case GROUPED_WITH_NON_GROUPED:
                     if (grouping == null || newGrouping == null) {
                         return true;
                     } else {
-                        return (equals(grouping[0], newGrouping[0]) && equals(grouping[1], newGrouping[1]));
+                        return grouping.equals(newGrouping);
                     }
                 case IGNORE_GROUPS:
                     return true;
@@ -528,12 +625,18 @@ public interface VirtualIngest {
             return Objects.equal(s1, s2);
         }
         
-        private String[] getGrouping(NormalizedContentInterface value, GroupingPolicy groupingPolicy) {
+        private VirtualFieldGrouping getGrouping(NormalizedContentInterface value, GroupingPolicy groupingPolicy) {
             if (!groupingPolicy.equals(GroupingPolicy.IGNORE_GROUPS)) {
-                if (value instanceof GroupedNormalizedContentInterface) {
-                    if (((GroupedNormalizedContentInterface) value).isGrouped()) {
-                        return new String[] {((GroupedNormalizedContentInterface) value).getGroup(), ((GroupedNormalizedContentInterface) value).getSubGroup()};
-                    }
+                return getGrouping(value);
+            }
+            return null;
+        }
+        
+        private VirtualFieldGrouping getGrouping(NormalizedContentInterface value) {
+            if (value instanceof GroupedNormalizedContentInterface) {
+                if (((GroupedNormalizedContentInterface) value).isGrouped()) {
+                    return new VirtualFieldGrouping(((GroupedNormalizedContentInterface) value).getGroup(),
+                                    ((GroupedNormalizedContentInterface) value).getSubGroup());
                 }
             }
             return null;
