@@ -35,11 +35,11 @@ public class VirtualFieldTest {
         eventFields.put("UNGROUPED_1", new NormalizedFieldAndValue("UNGROUPED_1", "value4"));
         eventFields.put("UNGROUPED_1", new NormalizedFieldAndValue("UNGROUPED_1", "value5"));
         
-        eventFields.put("UNGROUPED_2", new NormalizedFieldAndValue("UNGROUPED_1", "value1"));
-        eventFields.put("UNGROUPED_2", new NormalizedFieldAndValue("UNGROUPED_1", "value2"));
-        eventFields.put("UNGROUPED_2", new NormalizedFieldAndValue("UNGROUPED_1", "value3"));
-        eventFields.put("UNGROUPED_2", new NormalizedFieldAndValue("UNGROUPED_1", "value4"));
-        eventFields.put("UNGROUPED_2", new NormalizedFieldAndValue("UNGROUPED_1", "value5"));
+        eventFields.put("UNGROUPED_2", new NormalizedFieldAndValue("UNGROUPED_2", "value1"));
+        eventFields.put("UNGROUPED_2", new NormalizedFieldAndValue("UNGROUPED_2", "value2"));
+        eventFields.put("UNGROUPED_2", new NormalizedFieldAndValue("UNGROUPED_2", "value3"));
+        eventFields.put("UNGROUPED_2", new NormalizedFieldAndValue("UNGROUPED_2", "value4"));
+        eventFields.put("UNGROUPED_2", new NormalizedFieldAndValue("UNGROUPED_2", "value5"));
         
         eventFields.put("PARTIAL_1", new NormalizedFieldAndValue("PARTIAL_1", "value1", "group1", "subgroup1"));
         eventFields.put("PARTIAL_1", new NormalizedFieldAndValue("PARTIAL_1", "value2", "group2", "subgroup1"));
@@ -53,8 +53,6 @@ public class VirtualFieldTest {
         eventFields.put("PARTIAL_2", new NormalizedFieldAndValue("PARTIAL_2", "value4", "group4", "subgroup1"));
         eventFields.put("PARTIAL_2", new NormalizedFieldAndValue("PARTIAL_2", "value5", "group5", "subgroup1"));
     }
-    
-    // config.set("test" + VirtualIngest.VIRTUAL_FIELD_GROUPING_POLICY, "SAME_GROUP_ONLY,GROUPED_WITH_NON_GROUPED,IGNORE_GROUPS")
     
     protected VirtualFieldIngestHelper getHelper(VirtualIngest.GroupingPolicy policy) {
         VirtualFieldIngestHelper helper = new VirtualFieldIngestHelper(new Type("test", null, null, null, 1, null));

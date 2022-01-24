@@ -1,5 +1,21 @@
 package datawave.ingest.data.config.ingest;
 
+import com.google.common.base.Objects;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Multimap;
+import datawave.data.type.NoOpType;
+import datawave.ingest.data.Type;
+import datawave.ingest.data.config.GroupedNormalizedContentInterface;
+import datawave.ingest.data.config.NormalizedContentInterface;
+import datawave.ingest.data.config.NormalizedFieldAndValue;
+import datawave.marking.MarkingFunctions;
+import org.apache.commons.lang.NotImplementedException;
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.builder.HashCodeBuilder;
+import org.apache.commons.lang3.builder.EqualsBuilder;
+import org.apache.hadoop.conf.Configuration;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -8,29 +24,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
-
-import com.google.common.collect.Iterables;
-import datawave.data.type.NoOpType;
-import datawave.ingest.data.Type;
-import datawave.ingest.data.config.GroupedNormalizedContentInterface;
-import datawave.ingest.data.config.NormalizedContentInterface;
-import datawave.ingest.data.config.NormalizedFieldAndValue;
-
-import datawave.marking.MarkingFunctions;
-import org.apache.commons.lang.NotImplementedException;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.builder.HashCodeBuilder;
-import org.apache.commons.lang3.builder.EqualsBuilder;
-import org.apache.hadoop.conf.Configuration;
-
-import com.google.common.base.Objects;
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
 
 public interface VirtualIngest {
     
@@ -405,50 +402,43 @@ public interface VirtualIngest {
             compiledFieldPatterns = patterns;
         }
         
+        /**
+         * A class representing the group and subgroup for a field.
+         */
         public class VirtualFieldGrouping {
-            private final String group0;
-            private final String group1;
+            private final String group;
+            private final String subGroup;
             
-            public VirtualFieldGrouping(String group0, String group1) {
-                this.group0 = group0;
-                this.group1 = group1;
+            public VirtualFieldGrouping(String group, String subGroup) {
+                this.group = group;
+                this.subGroup = subGroup;
             }
             
-            public String getGroup1() {
-                return group1;
+            public String getSubGroup() {
+                return subGroup;
             }
             
-            public String getGroup0() {
-                return group0;
-            }
-            
-            public String get(int group) {
-                if (group == 0) {
-                    return group0;
-                } else if (group == 1) {
-                    return group1;
-                } else {
-                    throw new IllegalArgumentException("Illegal group " + group);
-                }
+            public String getGroup() {
+                return group;
             }
             
             @Override
             public int hashCode() {
-                return new HashCodeBuilder().append(group0).append(group1).toHashCode();
+                return new HashCodeBuilder().append(group).append(subGroup).toHashCode();
             }
             
             @Override
             public boolean equals(Object obj) {
                 if (obj instanceof VirtualFieldGrouping) {
                     VirtualFieldGrouping other = (VirtualFieldGrouping) obj;
-                    return new EqualsBuilder().append(group0, other.group0).append(group1, other.group1).isEquals();
+                    return new EqualsBuilder().append(group, other.group).append(subGroup, other.subGroup).isEquals();
                 }
                 return false;
             }
             
             @Override
             public String toString() {
-                return group0 + '.' + group1;
+                return group + '.' + subGroup;
             }
         }
         
@@ -555,8 +545,8 @@ public interface VirtualIngest {
                 n.setMarkings(markings);
                 if (grouping != null) {
                     n.setGrouped(true);
-                    n.setGroup(grouping.getGroup0());
-                    n.setSubGroup(grouping.getGroup1());
+                    n.setGroup(grouping.getGroup());
+                    n.setSubGroup(grouping.getSubGroup());
                 }
                 virtualFields.add(n);
             }
