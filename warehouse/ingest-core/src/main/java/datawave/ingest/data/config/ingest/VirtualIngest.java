@@ -1,6 +1,5 @@
 package datawave.ingest.data.config.ingest;
 
-import com.google.common.base.Objects;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Multimap;
@@ -10,7 +9,6 @@ import datawave.ingest.data.config.GroupedNormalizedContentInterface;
 import datawave.ingest.data.config.NormalizedContentInterface;
 import datawave.ingest.data.config.NormalizedFieldAndValue;
 import datawave.marking.MarkingFunctions;
-import org.apache.commons.lang.NotImplementedException;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.builder.HashCodeBuilder;
 import org.apache.commons.lang3.builder.EqualsBuilder;
@@ -341,6 +339,12 @@ public interface VirtualIngest {
             return markings1;
         }
         
+        /**
+         * Create the normalized form of a map of fields, and add the virtual fields as configured above.
+         * 
+         * @param fields
+         * @return The multimap of normalized fields including virtual fields.
+         */
         public Multimap<String,NormalizedContentInterface> normalize(Multimap<String,String> fields) {
             Multimap<String,NormalizedContentInterface> eventFields = HashMultimap.create();
             for (Entry<String,String> field : fields.entries()) {
@@ -349,14 +353,27 @@ public interface VirtualIngest {
             return normalizeMap(eventFields);
         }
         
+        /**
+         * Add the virtual fields as configured above to the existing normalized event fields. This is generally the main entry point to the virtual field
+         * generation.
+         * 
+         * @param eventFields
+         * @return The multimap of normalized fields including virtual fields.
+         */
         public Multimap<String,NormalizedContentInterface> normalizeMap(Multimap<String,NormalizedContentInterface> eventFields) {
             Multimap<String,NormalizedContentInterface> virtualFields = HashMultimap.create();
             
+            // lazily create the compilied field patterns
             if (this.compiledFieldPatterns == null)
                 compilePatterns();
+            
             if (this.virtualFieldDefinitions != null && !this.virtualFieldDefinitions.isEmpty()) {
                 List<NormalizedContentInterface> tempResults = new ArrayList<>();
+                
+                // create the map that will hold the fields mapped by field grouping (lazily filled for fields when needed)
                 Map<String,Multimap<VirtualFieldGrouping,NormalizedContentInterface>> groupedEventFields = new HashMap<>();
+                
+                // for each of the virtual field definitions, add the virtual fields.
                 for (Entry<String,String[]> vFields : this.virtualFieldDefinitions.entrySet()) {
                     tempResults.clear();
                     GroupingPolicy groupingPolicy = grouping.get(vFields.getKey());
@@ -372,6 +389,13 @@ public interface VirtualIngest {
             return virtualFields;
         }
         
+        /**
+         * Add the grouped map of fields to the specified map if not already created.
+         * 
+         * @param eventFields
+         * @param field
+         * @param groupedEventFields
+         */
         private void updateGroupedEventFields(Multimap<String,NormalizedContentInterface> eventFields, String field,
                         Map<String,Multimap<VirtualFieldGrouping,NormalizedContentInterface>> groupedEventFields) {
             if (!groupedEventFields.containsKey(field) && eventFields.containsKey(field)) {
@@ -379,6 +403,12 @@ public interface VirtualIngest {
             }
         }
         
+        /**
+         * Return the map of group to field for a list of fields.
+         * 
+         * @param fields
+         * @return the map of grouping to fields.
+         */
         private Multimap<VirtualFieldGrouping,NormalizedContentInterface> groupFields(Collection<NormalizedContentInterface> fields) {
             Multimap<VirtualFieldGrouping,NormalizedContentInterface> groups = HashMultimap.create();
             for (NormalizedContentInterface field : fields) {
@@ -387,6 +417,9 @@ public interface VirtualIngest {
             return groups;
         }
         
+        /**
+         * Compile the virual field definition patterns.
+         */
         private void compilePatterns() {
             Map<String,Pattern> patterns = new HashMap<>();
             for (Entry<String,String[]> vFields : this.virtualFieldDefinitions.entrySet()) {
@@ -442,7 +475,28 @@ public interface VirtualIngest {
             }
         }
         
-        // Create the virtual field from the event Fields members
+        /**
+         * Create the virtual field from the event Fields members This is the workhorse method for this class. This is a recursive routine that will expand the
+         * fields with next part of the virtual field definition at each stage. So if we have a pattern of FIELD_1.'-'.FIELD_2, then the first round will create
+         * fields containing the FIELD_1 values, the second round will append the '-' constant and then add the FIELD_2 values. So the depth of recursion will
+         * be equivalent to the number of fields in the virtual field definition plus 1 to add the virtual field to the map.
+         *
+         * @param virtualFields
+         * @param eventFields
+         * @param groupings
+         * @param virtualFieldName
+         * @param replacement
+         * @param grouping
+         * @param groupingPolicy
+         * @param allowMissing
+         * @param fields
+         * @param pos
+         * @param startSeparator
+         * @param endSeparator
+         * @param originalValue
+         * @param normalizedValue
+         * @param markings
+         */
         public void addVirtualFields(List<NormalizedContentInterface> virtualFields, Multimap<String,NormalizedContentInterface> eventFields,
                         Map<String,Multimap<VirtualFieldGrouping,NormalizedContentInterface>> groupings, String virtualFieldName, String replacement,
                         VirtualFieldGrouping grouping, GroupingPolicy groupingPolicy, boolean allowMissing, String[] fields, int pos, String startSeparator,
@@ -458,9 +512,11 @@ public interface VirtualIngest {
                 endSeparator = "";
             }
             
+            // if we have not exhausted the virtual field definition segments
             if (pos < fields.length) {
                 String memberName = fields[pos];
                 
+                // determine if we have a field pattern
                 if ((memberName.charAt(0) == '\'' && memberName.charAt(memberName.length() - 1) == '\'')
                                 || (memberName.charAt(0) == '"' && memberName.charAt(memberName.length() - 1) == '"')) {
                     separator = memberName.substring(1, memberName.length() - 1);
@@ -472,6 +528,8 @@ public interface VirtualIngest {
                 if (memberName.indexOf('*') >= 0 && replacement != null) {
                     memberName = memberName.replace("*", replacement);
                 }
+                
+                // if we have a field pattern, the expanding with those fields that match the pattern
                 if (compiledFieldPatterns.containsKey(memberName)) {
                     Pattern pattern = compiledFieldPatterns.get(memberName);
                     for (String key : eventFields.keySet()) {
@@ -481,45 +539,49 @@ public interface VirtualIngest {
                             int oLen = originalValue.length();
                             int nLen = normalizedValue.length();
                             boolean firstField = (oLen == 0 && nLen == 0);
+                            
+                            // for each field value that matches the grouping policy for this virtual field definition
                             for (NormalizedContentInterface value : getEventFields(firstField, key, groupingPolicy, grouping, eventFields, groupings)) {
+                                
+                                // get the new grouping if any
                                 VirtualFieldGrouping newGrouping = getGrouping(value, groupingPolicy);
-                                if (!firstField) {
-                                    if (!matchingGrouping(grouping, newGrouping, groupingPolicy)) {
-                                        continue;
-                                    }
-                                }
-                                // ensure that we have a matching nesting level if required
+                                
+                                // add the value to the virtual field we are building
                                 originalValue.append(startSeparator);
                                 originalValue.append(value.getEventFieldValue());
                                 originalValue.append(endSeparator);
                                 normalizedValue.append(startSeparator);
                                 normalizedValue.append(value.getIndexedFieldValue());
                                 normalizedValue.append(endSeparator);
-                                if (pos + 1 < fields.length) {
-                                    addVirtualFields(virtualFields, eventFields, groupings, virtualFieldName.replace("*", replacement), replacement,
-                                                    (grouping == null ? newGrouping : grouping), groupingPolicy, allowMissing, fields, pos + 1,
-                                                    this.defaultStartSeparator, this.defaultEndSeparator, originalValue, normalizedValue,
-                                                    mergeMarkings(markings, value.getMarkings()));
-                                }
+                                
+                                // recurse for the next virtual field definition segment
+                                addVirtualFields(virtualFields, eventFields, groupings, virtualFieldName.replace("*", replacement), replacement,
+                                                (grouping == null ? newGrouping : grouping), groupingPolicy, allowMissing, fields, pos + 1,
+                                                this.defaultStartSeparator, this.defaultEndSeparator, originalValue, normalizedValue,
+                                                mergeMarkings(markings, value.getMarkings()));
+                                
+                                // reset the values to the original length
                                 originalValue.setLength(oLen);
                                 normalizedValue.setLength(nLen);
                             }
                         }
                     }
+                    
                 } else if (!eventFields.containsKey(memberName) && allowMissing) {
+                    // recurse for the next virtual field definition segment in the case that we are adding missing fields
                     addVirtualFields(virtualFields, eventFields, groupings, virtualFieldName, replacement, grouping, groupingPolicy, allowMissing, fields,
                                     pos + 1, startSeparator, endSeparator, originalValue, normalizedValue, markings);
+                    
                 } else {
                     int oLen = originalValue.length();
                     int nLen = normalizedValue.length();
                     boolean firstField = (oLen == 0 && nLen == 0);
+                    
+                    // for each value for this field
                     for (NormalizedContentInterface value : getEventFields(firstField, memberName, groupingPolicy, grouping, eventFields, groupings)) {
                         VirtualFieldGrouping newGrouping = getGrouping(value, groupingPolicy);
-                        if (!firstField) {
-                            if (!matchingGrouping(grouping, newGrouping, groupingPolicy)) {
-                                continue;
-                            }
-                        }
+                        
+                        // append the value
                         originalValue.append(startSeparator);
                         originalValue.append(value.getEventFieldValue());
                         originalValue.append(endSeparator);
@@ -530,14 +592,19 @@ public interface VirtualIngest {
                             normalizedValue.append(value.getIndexedFieldValue());
                         }
                         normalizedValue.append(endSeparator);
+                        
+                        // recurse on the next virtual field segment
                         addVirtualFields(virtualFields, eventFields, groupings, virtualFieldName, replacement, (grouping == null ? newGrouping : grouping),
                                         groupingPolicy, allowMissing, fields, pos + 1, this.defaultStartSeparator, this.defaultEndSeparator, originalValue,
                                         normalizedValue, mergeMarkings(markings, value.getMarkings()));
+                        
+                        // reset the values to the original length
                         originalValue.setLength(oLen);
                         normalizedValue.setLength(nLen);
                     }
                 }
             } else if (originalValue.length() > 0) {
+                // this is the tail of the recursion where we will actually add the value to the map of virtual fields.
                 NormalizedFieldAndValue n = new NormalizedFieldAndValue();
                 n.setFieldName(virtualFieldName);
                 n.setEventFieldValue(originalValue.toString());
@@ -552,6 +619,17 @@ public interface VirtualIngest {
             }
         }
         
+        /**
+         * This will get the list of values given for the given grouping policy. The cached grouping map will be updated if needed to satisfy this call.
+         * 
+         * @param firstField
+         * @param field
+         * @param groupingPolicy
+         * @param grouping
+         * @param eventFields
+         * @param groupings
+         * @return
+         */
         private Iterable<NormalizedContentInterface> getEventFields(boolean firstField, String field, GroupingPolicy groupingPolicy,
                         VirtualFieldGrouping grouping, Multimap<String,NormalizedContentInterface> eventFields,
                         Map<String,Multimap<VirtualFieldGrouping,NormalizedContentInterface>> groupings) {
@@ -586,33 +664,6 @@ public interface VirtualIngest {
         
         private String getConstant(String name) {
             return name.substring(1, name.length() - 1);
-        }
-        
-        private boolean matchingGrouping(VirtualFieldGrouping grouping, VirtualFieldGrouping newGrouping, GroupingPolicy groupingPolicy) {
-            switch (groupingPolicy) {
-                case SAME_GROUP_ONLY:
-                    if (grouping == null) {
-                        return (newGrouping == null);
-                    } else if (newGrouping == null) {
-                        return false;
-                    } else {
-                        return grouping.equals(newGrouping);
-                    }
-                case GROUPED_WITH_NON_GROUPED:
-                    if (grouping == null || newGrouping == null) {
-                        return true;
-                    } else {
-                        return grouping.equals(newGrouping);
-                    }
-                case IGNORE_GROUPS:
-                    return true;
-                default:
-                    throw new NotImplementedException("Cannot handle the " + groupingPolicy + " grouping policy");
-            }
-        }
-        
-        private boolean equals(String s1, String s2) {
-            return Objects.equal(s1, s2);
         }
         
         private VirtualFieldGrouping getGrouping(NormalizedContentInterface value, GroupingPolicy groupingPolicy) {
