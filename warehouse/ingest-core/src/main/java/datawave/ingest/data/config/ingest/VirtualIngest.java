@@ -398,7 +398,7 @@ public interface VirtualIngest {
          */
         private void updateGroupedEventFields(Multimap<String,NormalizedContentInterface> eventFields, String field,
                         Map<String,Multimap<VirtualFieldGrouping,NormalizedContentInterface>> groupedEventFields) {
-            if (!groupedEventFields.containsKey(field) && eventFields.containsKey(field)) {
+            if (!groupedEventFields.containsKey(field)) {
                 groupedEventFields.put(field, groupFields(eventFields.get(field)));
             }
         }
