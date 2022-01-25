@@ -120,8 +120,8 @@ info "Data download is complete"
 
 # See datawave/bootstrap.sh and accumulo/bootstrap.sh for these function definitions...
 
-! datawaveIsInstalled && error "DataWave must first be installed" && exit 1
-! accumuloIsRunning && error "Accumulo must be up and running" && exit 1
+#! datawaveIsInstalled && error "DataWave must first be installed" && exit 1
+#! accumuloIsRunning && error "Accumulo must be up and running" && exit 1
 
 info "Ingesting TV show data into Accumulo"
 
