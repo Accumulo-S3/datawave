@@ -131,7 +131,7 @@ function setQueryIdFromResponse() {
 }
 
 function prettyPrintJson() {
-    local PY=$( which python )
+    local PY=$( which python2 )
     if [ -n "${PY}" ] ; then
         echo "${1}" | ${PY} -c 'import sys,json;data=json.loads(sys.stdin.read()); print(json.dumps(data, indent=2, sort_keys=True))'
         local exitStatus=$?

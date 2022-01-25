@@ -247,7 +247,7 @@ function launchIngestJob() {
    echo
    info "Initiating DataWave Ingest job for '${1}'"
    info "Loading raw data into HDFS: '${putFileCommand}'"
-   ! eval "${putFileCommand}" && error "Failed to load raw data into HDFS" && return 1
+#   ! eval "${putFileCommand}" && error "Failed to load raw data into HDFS" && return 1
    info "Submitting M/R job: '${jobCommand}'"
 
    eval "${jobCommand}"

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ `uname` == "Darwin" ]]; then
-	THIS_SCRIPT=`python -c 'import os,sys;print os.path.realpath(sys.argv[1])' $0`
+	THIS_SCRIPT=`python2 -c 'import os,sys;print os.path.realpath(sys.argv[1])' $0`
 else
 	THIS_SCRIPT=`readlink -f $0`
 fi
@@ -52,7 +52,7 @@ $START_INGEST_SERVERS_CMD -type all
 
 sleep 1
 
-PID=`ps -wwef | egrep "python .*cleanup-server.py" | grep -v grep | awk {'print $2'}`
+PID=`ps -wwef | egrep "python2 .*cleanup-server.py" | grep -v grep | awk {'print $2'}`
 if [ -z $PID ]; then
         echo "starting cleanup server ..."
         $CLEAN_CMD &

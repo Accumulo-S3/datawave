@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ `uname` == "Darwin" ]]; then
-	READLINK_CMD="python -c 'import os,sys;print os.path.realpath(sys.argv[1])'"
+	READLINK_CMD="python2 -c 'import os,sys;print os.path.realpath(sys.argv[1])'"
 	MKTEMP_OPTS="-t $0"
 else
 	READLINK_CMD="readlink -f"

@@ -5,7 +5,7 @@
 #   -n N specifies the number of days for which to create splits.  Default is 1.
 
 if [[ `uname` == "Darwin" ]]; then
-        THIS_SCRIPT=`python -c 'import os,sys;print os.path.realpath(sys.argv[1])' $0`
+        THIS_SCRIPT=`python2 -c 'import os,sys;print os.path.realpath(sys.argv[1])' $0`
 else
         THIS_SCRIPT=`readlink -f $0`
 fi
