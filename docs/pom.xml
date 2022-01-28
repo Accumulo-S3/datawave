@@ -291,23 +291,23 @@
                     </execution>
                 </executions>
             </plugin>
-            <plugin>
-                <artifactId>maven-javadoc-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>module-apidocs</id>
-                        <goals>
-                            <goal>jar</goal>
-                        </goals>
-                        <phase>package</phase>
-                        <configuration combine.children="append">
-                            <sourcepath>${project.build.directory}/dependency</sourcepath>
-                            <outputDirectory>${project.build.directory}/apidocs</outputDirectory>
-                            <excludePackageNames>generated-sources.*</excludePackageNames>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+            <!--            <plugin>-->
+            <!--                <artifactId>maven-javadoc-plugin</artifactId>-->
+            <!--                <executions>-->
+            <!--                    <execution>-->
+            <!--                        <id>module-apidocs</id>-->
+            <!--                        <goals>-->
+            <!--                            <goal>jar</goal>-->
+            <!--                        </goals>-->
+            <!--                        <phase>package</phase>-->
+            <!--                        <configuration combine.children="append">-->
+            <!--                            <sourcepath>${project.build.directory}/dependency</sourcepath>-->
+            <!--                            <outputDirectory>${project.build.directory}/apidocs</outputDirectory>-->
+            <!--                            <excludePackageNames>generated-sources.*</excludePackageNames>-->
+            <!--                        </configuration>-->
+            <!--                    </execution>-->
+            <!--                </executions>-->
+            <!--            </plugin>-->
         </plugins>
     </build>
 </project>
