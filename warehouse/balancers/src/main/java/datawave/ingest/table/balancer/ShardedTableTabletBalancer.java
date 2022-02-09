@@ -1,13 +1,13 @@
 package datawave.ingest.table.balancer;
 
-import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
 import org.apache.accumulo.core.conf.Property;
-import org.apache.accumulo.core.data.impl.KeyExtent;
+import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.master.thrift.TabletServerStatus;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.server.master.balancer.GroupBalancer;
-import org.apache.accumulo.server.master.state.TServerInstance;
+import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.server.master.state.TabletMigration;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.WritableComparator;
@@ -23,6 +23,8 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * A custom tablet balancer designed to work with a date-partitioned (sharded) table. This balancer is based on the {@link GroupBalancer}, which spreads tablets
@@ -41,12 +43,12 @@ public class ShardedTableTabletBalancer extends GroupBalancer {
     public static final int MAX_MIGRATIONS_DEFAULT = 10000;
     
     private static final Logger log = Logger.getLogger(ShardedTableTabletBalancer.class);
-    private Collection<Pair<KeyExtent,Location>> tabletLocationCache;
+    private Map<KeyExtent,TServerInstance> tabletLocationCache;
     private Function<KeyExtent,String> partitioner;
     private String tableId;
     
     public ShardedTableTabletBalancer(String tableId) {
-        super(tableId);
+        super(TableId.of(tableId));
         this.tableId = tableId;
     }
     
@@ -73,19 +75,22 @@ public class ShardedTableTabletBalancer extends GroupBalancer {
         
         return super.balance(current, migrations, migrationsOut);
     }
-    
+
+    //protected abstract Function<KeyExtent,String> getPartitioner();
     @Override
     protected Function<KeyExtent,String> getPartitioner() {
         return partitioner;
     }
-    
+
+    // protected Map<KeyExtent,TServerInstance> getLocationProvider() {
     @Override
-    protected Iterable<Pair<KeyExtent,Location>> getLocationProvider() {
+    protected Map<KeyExtent,TServerInstance> getLocationProvider() {
         // Cache metadata locations so we only scan the metadata table once per balancer pass
         if (tabletLocationCache == null) {
-            tabletLocationCache = new LinkedList<>();
-            Iterables.addAll(tabletLocationCache, getRawLocationProvider());
-            tabletLocationCache = Collections.unmodifiableCollection(tabletLocationCache);
+//            tabletLocationCache = new LinkedList<>();
+            tabletLocationCache.putAll(getRawLocationProvider());
+//            Iterables.addAll(tabletLocationCache, getRawLocationProvider());
+            tabletLocationCache = Collections.unmodifiableMap(tabletLocationCache);
         }
         return tabletLocationCache;
     }
@@ -94,7 +99,7 @@ public class ShardedTableTabletBalancer extends GroupBalancer {
     protected int getMaxMigrations() {
         int maxMigrations = MAX_MIGRATIONS_DEFAULT;
         try {
-            String maxMigrationsProp = this.configuration.getTableConfiguration(this.tableId).get(SHARDED_MAX_MIGRATIONS);
+            String maxMigrationsProp = this.context.getTableConfiguration(TableId.of(this.tableId)).get(SHARDED_MAX_MIGRATIONS);
             if (maxMigrationsProp != null && !maxMigrationsProp.isEmpty()) {
                 try {
                     maxMigrations = Integer.parseInt(maxMigrationsProp);
@@ -112,7 +117,7 @@ public class ShardedTableTabletBalancer extends GroupBalancer {
      * Gets the raw location provider. By default this just delegates to the parent class' {@link #getLocationProvider()} which scans the metadata table.
      * However, test cases might override in order to replace the parent metadata location provider whilst still allowing the caching mechanism in use here.
      */
-    protected Iterable<Pair<KeyExtent,Location>> getRawLocationProvider() {
+    protected Map<KeyExtent,TServerInstance> getRawLocationProvider() {
         return super.getLocationProvider();
     }
     
@@ -125,7 +130,7 @@ public class ShardedTableTabletBalancer extends GroupBalancer {
         public String apply(KeyExtent extent) {
             String date = "null"; // Don't return null
             if (extent != null) {
-                Text endRow = extent.getEndRow();
+                Text endRow = extent.endRow();
                 if (endRow != null) {
                     int sepIdx = endRow.find("_");
                     if (sepIdx < 0)
@@ -154,18 +159,19 @@ public class ShardedTableTabletBalancer extends GroupBalancer {
          * @param tabletLocations
          *            the sorted list of tablet and current/previous location pairs
          */
-        public ShardGroupPartitioner(int numTservers, Iterable<Pair<KeyExtent,Location>> tabletLocations) {
+        public ShardGroupPartitioner(int numTservers, Map<KeyExtent,TServerInstance> tabletLocations) {
             int groupSize = Math.round(numTservers * 0.95f);
             int numInGroup = 0;
             int groupNumber = 1;
             
             String groupID = String.format("g%04d", groupNumber);
-            KeyExtent groupStartExtent = tabletLocations.iterator().next().getFirst();
+//            KeyExtent groupStartExtent = tabletLocations.iterator().next().getFirst();
+            KeyExtent groupStartExtent = tabletLocations.keySet().iterator().next();
             int groupStartNumber = numInGroup;
             byte[] prevDate = retrieveDate(groupStartExtent);
             groupIDs.put(groupStartExtent, groupID);
-            for (Pair<KeyExtent,Location> pair : tabletLocations) {
-                KeyExtent extent = pair.getFirst();
+            for (Map.Entry<KeyExtent,TServerInstance> pair : tabletLocations.entrySet()) {
+                KeyExtent extent = pair.getKey();
                 
                 // The date changed, so save this extent as a (potential) new group start extent
                 if (!sameDate(extent, prevDate)) {
@@ -203,9 +209,9 @@ public class ShardedTableTabletBalancer extends GroupBalancer {
         }
         
         private byte[] retrieveDate(KeyExtent extent) {
-            Text endRow = extent.getEndRow();
+            Text endRow = extent.endRow();
             if (endRow == null)
-                endRow = extent.getPrevEndRow();
+                endRow = extent.prevEndRow();
             if (endRow == null) {
                 log.warn("Attempting to retrieve date from empty extent " + extent + ". Is your sharded table pre-split?");
                 return "null".getBytes();
@@ -220,9 +226,9 @@ public class ShardedTableTabletBalancer extends GroupBalancer {
         }
         
         private boolean sameDate(KeyExtent extent, byte[] date) {
-            Text endRow = extent.getEndRow();
+            Text endRow = extent.endRow();
             if (endRow == null)
-                endRow = extent.getPrevEndRow();
+                endRow = extent.prevEndRow();
             if (endRow == null) {
                 log.warn("Attempting to compare date from empty extent " + extent + ". Is your sharded table pre-split?");
                 return date == null || date.length == 0;

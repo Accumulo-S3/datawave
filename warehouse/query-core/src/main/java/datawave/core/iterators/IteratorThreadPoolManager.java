@@ -9,11 +9,12 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+//import datawave.common.iterators.SimpleTimer;
+import datawave.query.transformer.SimpleTimer;
+import io.micrometer.core.instrument.util.NamedThreadFactory;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
-import org.apache.accumulo.core.util.NamingThreadFactory;
-import org.apache.accumulo.server.util.time.SimpleTimer;
 import org.apache.log4j.Logger;
 
 /**
@@ -66,7 +67,7 @@ public class IteratorThreadPoolManager {
     
     private ThreadPoolExecutor createExecutorService(int maxThreads, String name) {
         ThreadPoolExecutor pool = new ThreadPoolExecutor(maxThreads, maxThreads, 5 * 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>(),
-                        new NamingThreadFactory(name));
+                        new NamedThreadFactory(name));
         pool.allowCoreThreadTimeOut(true);
         return pool;
     }

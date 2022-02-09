@@ -485,31 +485,31 @@
             </plugins>
         </pluginManagement>
         <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-enforcer-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>enforce-no-snapshots</id>
-                        <goals>
-                            <goal>enforce</goal>
-                        </goals>
-                        <configuration>
-                            <rules>
-                                <requireReleaseDeps>
-                                    <message>No snapshot dependencies allowed.</message>
-                                    <onlyWhenRelease>true</onlyWhenRelease>
-                                    <failWhenParentIsSnapshot>true</failWhenParentIsSnapshot>
-                                    <excludes>
-                                        <exclude>org.apache.commons:commons-vfs2</exclude>
-                                    </excludes>
-                                </requireReleaseDeps>
-                            </rules>
-                            <fail>true</fail>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+            <!--            <plugin>-->
+            <!--                <groupId>org.apache.maven.plugins</groupId>-->
+            <!--                <artifactId>maven-enforcer-plugin</artifactId>-->
+            <!--                <executions>-->
+            <!--                    <execution>-->
+            <!--                        <id>enforce-no-snapshots</id>-->
+            <!--                        <goals>-->
+            <!--                            <goal>enforce</goal>-->
+            <!--                        </goals>-->
+            <!--                        <configuration>-->
+            <!--                            <rules>-->
+            <!--                                <requireReleaseDeps>-->
+            <!--                                    <message>No snapshot dependencies allowed.</message>-->
+            <!--                                    <onlyWhenRelease>true</onlyWhenRelease>-->
+            <!--                                    <failWhenParentIsSnapshot>true</failWhenParentIsSnapshot>-->
+            <!--                                    <excludes>-->
+            <!--                                        <exclude>org.apache.commons:commons-vfs2</exclude>-->
+            <!--                                    </excludes>-->
+            <!--                                </requireReleaseDeps>-->
+            <!--                            </rules>-->
+            <!--                            <fail>true</fail>-->
+            <!--                        </configuration>-->
+            <!--                    </execution>-->
+            <!--                </executions>-->
+            <!--            </plugin>-->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>

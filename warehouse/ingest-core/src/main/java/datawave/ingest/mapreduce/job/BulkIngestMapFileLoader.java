@@ -12,14 +12,18 @@ import org.apache.accumulo.core.client.Instance;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.ZooKeeperInstance;
 import org.apache.accumulo.core.client.admin.TableOperations;
-import org.apache.accumulo.core.client.impl.ClientContext;
-import org.apache.accumulo.core.client.impl.Credentials;
-import org.apache.accumulo.core.client.impl.MasterClient;
+import org.apache.accumulo.core.clientImpl.ClientConfConverter;
+import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
+import org.apache.accumulo.core.clientImpl.ClientInfoImpl;
+import org.apache.accumulo.core.clientImpl.Credentials;
+import org.apache.accumulo.core.clientImpl.ManagerClient;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
-import org.apache.accumulo.core.master.thrift.MasterClientService.Iface;
-import org.apache.accumulo.core.master.thrift.MasterMonitorInfo;
+import org.apache.accumulo.core.manager.thrift.ManagerClientService.Iface;
+import org.apache.accumulo.core.manager.thrift.ManagerMonitorInfo;
 import org.apache.accumulo.core.master.thrift.TableInfo;
+import org.apache.accumulo.core.singletons.SingletonReservation;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileChecksum;
@@ -60,12 +64,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Observer;
+import java.util.Properties;
 import java.util.Stack;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.stream.StreamSupport;
 
 /**
  * A processor whose job is to watch for completed Bulk Ingest jobs and bring the map files produced by them online in accumulo. This class attempts to bring
@@ -673,13 +679,19 @@ public final class BulkIngestMapFileLoader implements Runnable {
     
     private int getMajorCompactionCount() {
         int majC = 0;
+
+        Properties properties = new Properties();
+        StreamSupport.stream(conf.spliterator(), false).forEach(k -> properties.setProperty(k.getKey(), k.getValue()));
         
         ZooKeeperInstance instance = new ZooKeeperInstance(ClientConfiguration.loadDefault().withInstance(instanceName).withZkHosts(zooKeepers));
-        
+        ClientInfo info = new ClientInfoImpl(properties, credentials.getToken());
+        AccumuloConfiguration serverConf = ClientConfConverter.toAccumuloConf(properties);
+        ClientContext ctx = new ClientContext(new SingletonReservation(), info, serverConf);
         Iface client = null;
         try {
-            client = MasterClient.getConnection(new ClientContext(instance, credentials, AccumuloConfiguration.getDefaultConfiguration()));
-            MasterMonitorInfo mmi = client.getMasterStats(null, credentials.toThrift(instance));
+//            client = ManagerClient.getConnection(new ClientContext(instance, credentials, AccumuloConfiguration.getDefaultConfiguration()));
+            client = ManagerClient.getConnection(ctx);
+            ManagerMonitorInfo mmi = client.getManagerStats(null, credentials.toThrift(instance.getInstanceID()));
             Map<String,TableInfo> tableStats = mmi.getTableMap();
             
             for (java.util.Map.Entry<String,TableInfo> e : tableStats.entrySet()) {
@@ -692,7 +704,7 @@ public final class BulkIngestMapFileLoader implements Runnable {
             log.error("Unable to retrieve major compaction stats: " + e.getMessage());
         } finally {
             if (client != null) {
-                MasterClient.close(client);
+                ManagerClient.close(client, ctx);
             }
         }
         

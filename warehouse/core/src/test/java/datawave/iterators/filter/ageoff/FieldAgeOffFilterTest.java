@@ -6,6 +6,7 @@ import datawave.iterators.filter.AgeOffTtlUnits;
 import org.apache.accumulo.core.client.SampleNotPresentException;
 import org.apache.accumulo.core.client.sample.SamplerConfiguration;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Value;
@@ -107,15 +108,20 @@ public class FieldAgeOffFilterTest {
         public String get(Property property) {
             return map.get(property.getKey());
         }
-        
-        @Override
-        public void getProperties(Map<String,String> props, Predicate<String> filter) {
-            for (Map.Entry<String,String> item : map.entrySet()) {
-                if (filter.apply(item.getKey())) {
-                    props.put(item.getKey(), item.getValue());
-                }
-            }
+
+        @Override public void getProperties(Map<String,String> map,
+            java.util.function.Predicate<String> predicate) {
+
         }
+
+//        @Override
+//        public void getProperties(Map<String,String> props, Predicate<String> filter) {
+//            for (Map.Entry<String,String> item : map.entrySet()) {
+//                if (filter.apply(item.getKey())) {
+//                    props.put(item.getKey(), item.getValue());
+//                }
+//            }
+//        }
         
         @Override
         public Iterator<Map.Entry<String,String>> iterator() {
@@ -126,7 +132,7 @@ public class FieldAgeOffFilterTest {
     
     @Test
     public void testIndexTrueUsesDefaultWhenFieldLacksTtl() {
-        EditableAccumuloConfiguration conf = new EditableAccumuloConfiguration(AccumuloConfiguration.getDefaultConfiguration());
+        EditableAccumuloConfiguration conf = new EditableAccumuloConfiguration(DefaultConfiguration.getInstance());
         conf.put("table.custom.isindextable", "true");
         iterEnv.setConf(conf);
         
@@ -153,7 +159,7 @@ public class FieldAgeOffFilterTest {
     
     @Test
     public void testIterEnvNotLostOnDeepCopy() {
-        EditableAccumuloConfiguration conf = new EditableAccumuloConfiguration(AccumuloConfiguration.getDefaultConfiguration());
+        EditableAccumuloConfiguration conf = new EditableAccumuloConfiguration(DefaultConfiguration.getInstance());
         conf.put("table.custom.isindextable", "true");
         iterEnv.setConf(conf);
         
@@ -180,7 +186,7 @@ public class FieldAgeOffFilterTest {
     
     @Test
     public void testIndexFalseUsesDefaultWhenFieldLacksTtl() {
-        EditableAccumuloConfiguration conf = new EditableAccumuloConfiguration(AccumuloConfiguration.getDefaultConfiguration());
+        EditableAccumuloConfiguration conf = new EditableAccumuloConfiguration(DefaultConfiguration.getInstance());
         conf.put("isindextable", "false");
         iterEnv.setConf(conf);
         
@@ -207,7 +213,7 @@ public class FieldAgeOffFilterTest {
     
     @Test
     public void testLegacyIndexTrueUsesDefaultWhenFieldLacksTtl() {
-        EditableAccumuloConfiguration conf = new EditableAccumuloConfiguration(AccumuloConfiguration.getDefaultConfiguration());
+        EditableAccumuloConfiguration conf = new EditableAccumuloConfiguration(DefaultConfiguration.getInstance());
         iterEnv.setConf(conf);
         
         long tenSecondsAgo = System.currentTimeMillis() - (10L * ONE_SEC);
@@ -234,7 +240,7 @@ public class FieldAgeOffFilterTest {
     
     @Test
     public void testLegacyIndexFalseUsesDefaultWhenFieldLacksTtl() {
-        EditableAccumuloConfiguration conf = new EditableAccumuloConfiguration(AccumuloConfiguration.getDefaultConfiguration());
+        EditableAccumuloConfiguration conf = new EditableAccumuloConfiguration(DefaultConfiguration.getInstance());
         iterEnv.setConf(conf);
         
         long tenSecondsAgo = System.currentTimeMillis() - (10L * ONE_SEC);
@@ -261,7 +267,7 @@ public class FieldAgeOffFilterTest {
     
     @Test
     public void testIndexTrueDefaultFalseWhenFieldLacksTtl() {
-        EditableAccumuloConfiguration conf = new EditableAccumuloConfiguration(AccumuloConfiguration.getDefaultConfiguration());
+        EditableAccumuloConfiguration conf = new EditableAccumuloConfiguration(DefaultConfiguration.getInstance());
         iterEnv.setConf(conf);
         
         long tenSecondsAgo = System.currentTimeMillis() - (10L * ONE_SEC);

@@ -130,7 +130,8 @@ public class IngestJob implements Tool {
     
     protected boolean eventProcessingError = false;
     protected Logger log = Logger.getLogger("datawave.ingest");
-    private ConsoleAppender ca = new ConsoleAppender(new PatternLayout("%p [%c{1}] %m%n"));
+//    private ConsoleAppender ca = new ConsoleAppender(new PatternLayout("%p [%c{1}] %m%n"));
+    private ConsoleAppender ca = new ConsoleAppender();
     
     protected ArrayList<String[]> confOverrides = new ArrayList<>();
     protected int reduceTasks = 0;

@@ -82,13 +82,13 @@ import org.apache.accumulo.core.data.ByteSequence;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
-import org.apache.accumulo.core.iterators.IterationInterruptedException;
+import org.apache.accumulo.core.iteratorsImpl.system.IterationInterruptedException;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.iterators.YieldCallback;
 import org.apache.accumulo.core.iterators.YieldingKeyValueIterator;
-import org.apache.accumulo.core.trace.Span;
-import org.apache.accumulo.core.trace.Trace;
+//import org.apache.accumulo.core.trace.Span;
+//import org.apache.accumulo.core.trace.Trace;
 import org.apache.accumulo.tserver.tablet.TabletClosedException;
 import org.apache.commons.collections4.iterators.EmptyIterator;
 import org.apache.commons.jexl2.JexlArithmetic;
@@ -158,8 +158,9 @@ import static org.apache.commons.pool.impl.GenericObjectPool.WHEN_EXHAUSTED_BLOC
  * </ol>
  *
  */
-public class QueryIterator extends QueryOptions implements YieldingKeyValueIterator<Key,Value>, JexlContextCreator.JexlContextValueComparator,
-                SourceFactory<Key,Value> {
+//public class QueryIterator extends QueryOptions implements YieldingKeyValueIterator<Key,Value>, JexlContextCreator.JexlContextValueComparator,
+//                SourceFactory<Key,Value> {
+public class QueryIterator extends QueryOptions implements SortedKeyValueIterator<Key, Value>, JexlContextCreator.JexlContextValueComparator, SourceFactory<Key,Value> {
     
     private static final Logger log = Logger.getLogger(QueryIterator.class);
     
@@ -225,7 +226,7 @@ public class QueryIterator extends QueryOptions implements YieldingKeyValueItera
         return collectTimingDetails || (statsdHostAndPort != null);
     }
     
-    @Override
+//    @Override
     public void init(SortedKeyValueIterator<Key,Value> source, Map<String,String> options, IteratorEnvironment env) throws IOException {
         if (log.isTraceEnabled()) {
             log.trace("QueryIterator init()");
@@ -340,7 +341,7 @@ public class QueryIterator extends QueryOptions implements YieldingKeyValueItera
         return false;
     }
     
-    @Override
+//    @Override
     public boolean hasTop() {
         boolean yielded = (this.yield != null) && this.yield.hasYielded();
         boolean result = (!yielded) && (this.key != null) && (this.value != null);
@@ -355,22 +356,22 @@ public class QueryIterator extends QueryOptions implements YieldingKeyValueItera
         this.yield = yieldCallback;
     }
     
-    @Override
+//    @Override
     public void next() throws IOException {
         getActiveQueryLog().get(getQueryId()).beginCall(this.originalRange, ActiveQuery.CallType.NEXT);
-        Span s = Trace.start("QueryIterator.next()");
+//        Span s = Trace.start("QueryIterator.next()");
         if (log.isTraceEnabled()) {
             log.trace("next");
         }
         
         try {
-            prepareKeyValue(s);
+            prepareKeyValue();
         } catch (Exception e) {
             handleException(e);
         } finally {
-            if (null != s) {
-                s.stop();
-            }
+//            if (null != s) {
+//                s.stop();
+//            }
             QueryStatsDClient client = getStatsdClient();
             if (client != null) {
                 client.flush();
@@ -383,13 +384,13 @@ public class QueryIterator extends QueryOptions implements YieldingKeyValueItera
         }
     }
     
-    @Override
+//    @Override
     public void seek(Range range, Collection<ByteSequence> columnFamilies, boolean inclusive) throws IOException {
         // preserve the original range for use with the Final Document tracking iterator because it is placed after the ResultCountingIterator
         // so the FinalDocumentTracking iterator needs the start key with the count already appended
         originalRange = range;
         getActiveQueryLog().get(getQueryId()).beginCall(this.originalRange, ActiveQuery.CallType.SEEK);
-        Span span = Trace.start("QueryIterator.seek");
+//        Span span = Trace.start("QueryIterator.seek");
         
         if (!this.isIncludeGroupingContext()
                         && (this.query.contains("grouping:") || this.query.contains("matchesInGroup") || this.query.contains("MatchesInGroup") || this.query
@@ -413,7 +414,7 @@ public class QueryIterator extends QueryOptions implements YieldingKeyValueItera
                 if (collectTimingDetails && FinalDocumentTrackingIterator.isFinalDocumentKey(range.getStartKey())) {
                     this.seekKeySource = new EmptyTreeIterable();
                     this.serializedDocuments = EmptyIterator.emptyIterator();
-                    prepareKeyValue(span);
+                    prepareKeyValue();
                     return;
                 }
                 
@@ -564,16 +565,16 @@ public class QueryIterator extends QueryOptions implements YieldingKeyValueItera
             }
             
             // Determine if we have items to return
-            prepareKeyValue(span);
+            prepareKeyValue();
         } catch (Exception e) {
             handleException(e);
         } finally {
             if (gatherTimingDetails() && trackingSpan != null && querySpanCollector != null) {
                 querySpanCollector.addQuerySpan(trackingSpan);
             }
-            if (null != span) {
-                span.stop();
-            }
+//            if (null != span) {
+//                span.stop();
+//            }
             QueryStatsDClient client = getStatsdClient();
             if (client != null) {
                 client.flush();
@@ -1175,7 +1176,7 @@ public class QueryIterator extends QueryOptions implements YieldingKeyValueItera
         }
     }
     
-    private void prepareKeyValue(Span span) {
+    private void prepareKeyValue() {
         if (this.serializedDocuments.hasNext()) {
             Entry<Key,Value> entry = this.serializedDocuments.next();
             
@@ -1186,9 +1187,9 @@ public class QueryIterator extends QueryOptions implements YieldingKeyValueItera
             this.key = entry.getKey();
             this.value = entry.getValue();
             
-            if (Trace.isTracing()) {
-                span.data("Key", rowColFamToString(this.key));
-            }
+//            if (Trace.isTracing()) {
+//                span.data("Key", rowColFamToString(this.key));
+//            }
         } else {
             if (log.isTraceEnabled()) {
                 log.trace("Exhausted all keys");
@@ -1198,18 +1199,18 @@ public class QueryIterator extends QueryOptions implements YieldingKeyValueItera
         }
     }
     
-    @Override
+//    @Override
     public Key getTopKey() {
         return this.key;
     }
     
-    @Override
+//    @Override
     public Value getTopValue() {
         return this.value;
     }
     
-    @Override
-    public SortedKeyValueIterator<Key,Value> deepCopy(IteratorEnvironment env) {
+//    @Override
+    public SortedKeyValueIterator<Key, Value> deepCopy(IteratorEnvironment env) {
         return new QueryIterator(this, env);
     }
     

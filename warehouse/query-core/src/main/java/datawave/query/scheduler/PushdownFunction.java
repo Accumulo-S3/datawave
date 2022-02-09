@@ -5,8 +5,10 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.Map.Entry;
+import java.util.stream.StreamSupport;
 
 import datawave.query.config.ShardQueryConfiguration;
 import datawave.query.planner.QueryPlan;
@@ -17,16 +19,22 @@ import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.TableDeletedException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.TableOfflineException;
-import org.apache.accumulo.core.client.impl.ClientContext;
-import org.apache.accumulo.core.client.impl.Tables;
-import org.apache.accumulo.core.client.impl.TabletLocator;
+import org.apache.accumulo.core.clientImpl.ClientConfConverter;
+import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
+import org.apache.accumulo.core.clientImpl.ClientInfoImpl;
+import org.apache.accumulo.core.clientImpl.Tables;
+import org.apache.accumulo.core.clientImpl.TabletLocator;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
-import org.apache.accumulo.core.data.impl.KeyExtent;
+import org.apache.accumulo.core.conf.DefaultConfiguration;
+import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.data.Range;
-import org.apache.accumulo.core.master.state.tables.TableState;
-import org.apache.accumulo.core.client.impl.Credentials;
+import org.apache.accumulo.core.manager.state.tables.TableState;
+import org.apache.accumulo.core.clientImpl.Credentials;
+import org.apache.accumulo.core.singletons.SingletonReservation;
 import org.apache.commons.jexl2.parser.ParseException;
 import org.apache.hadoop.io.Text;
 import org.apache.log4j.Logger;
@@ -178,7 +186,16 @@ public class PushdownFunction implements Function<QueryData,List<ScannerChunk>> 
             binnedRanges.clear();
             AuthenticationToken authToken = new PasswordToken(config.getAccumuloPassword());
             Credentials creds = new Credentials(config.getConnector().whoami(), authToken);
-            List<Range> failures = tl.binRanges(new ClientContext(instance, creds, AccumuloConfiguration.getDefaultConfiguration()), ranges, binnedRanges);
+
+            Properties properties = new Properties();
+            DefaultConfiguration dc = DefaultConfiguration.getInstance();
+            StreamSupport
+                .stream(dc.spliterator(), false).forEach(k -> properties.setProperty(k.getKey(), k.getValue()));
+            ClientInfo info = new ClientInfoImpl(properties, creds.getToken());
+            AccumuloConfiguration serverConf = dc;
+            ClientContext ctx = new ClientContext(new SingletonReservation(), info, serverConf);
+            List<Range> failures = tl.binRanges(ctx, ranges, binnedRanges);
+//            List<Range> failures = tl.binRanges(new ClientContext(instance, creds, AccumuloConfiguration.getDefaultConfiguration()), ranges, binnedRanges);
             
             if (!failures.isEmpty()) {
                 // tried to only do table state checks when failures.size()
@@ -189,9 +206,9 @@ public class PushdownFunction implements Function<QueryData,List<ScannerChunk>> 
                 // deleted table were not cleared... so
                 // need to always do the check when failures occur
                 if (failures.size() >= lastFailureSize)
-                    if (!Tables.exists(instance, tableId))
+                    if (!Tables.exists(ctx, TableId.of(tableId)))
                         throw new TableDeletedException(tableId);
-                    else if (Tables.getTableState(instance, tableId) == TableState.OFFLINE)
+                    else if (Tables.getTableState(ctx, TableId.of(tableId)) == TableState.OFFLINE)
                         throw new TableOfflineException(instance, tableId);
                 
                 lastFailureSize = failures.size();

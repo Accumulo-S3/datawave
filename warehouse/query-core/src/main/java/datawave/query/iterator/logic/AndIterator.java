@@ -8,7 +8,7 @@ import datawave.query.iterator.Util;
 import datawave.query.iterator.Util.Transformer;
 import org.apache.accumulo.core.data.ByteSequence;
 import org.apache.accumulo.core.data.Range;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;

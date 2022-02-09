@@ -4,8 +4,10 @@ import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.StreamSupport;
 
 import datawave.query.config.ShardQueryConfiguration;
 import datawave.query.tables.ShardQueryLogic;
@@ -15,17 +17,24 @@ import org.apache.accumulo.core.client.BatchScanner;
 import org.apache.accumulo.core.client.Instance;
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.TableNotFoundException;
-import org.apache.accumulo.core.client.impl.ClientContext;
-import org.apache.accumulo.core.client.impl.Credentials;
-import org.apache.accumulo.core.client.impl.Tables;
-import org.apache.accumulo.core.client.impl.TabletLocator;
+import org.apache.accumulo.core.clientImpl.ClientConfConverter;
+import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
+import org.apache.accumulo.core.clientImpl.ClientInfoImpl;
+import org.apache.accumulo.core.clientImpl.Credentials;
+import org.apache.accumulo.core.clientImpl.Tables;
+import org.apache.accumulo.core.clientImpl.TabletLocator;
 import datawave.accumulo.inmemory.InMemoryInstance;
 import datawave.accumulo.inmemory.impl.InMemoryTabletLocator;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.core.clientImpl.TabletLocatorImpl;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.data.Key;
+import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.security.Authorizations;
+import org.apache.accumulo.core.singletons.SingletonReservation;
 import org.apache.commons.jexl2.parser.ParseException;
 import org.apache.log4j.Logger;
 
@@ -133,13 +142,22 @@ public class PushdownScheduler extends Scheduler {
         TabletLocator tl;
         
         Instance instance = config.getConnector().getInstance();
-        if (instance instanceof InMemoryInstance) {
-            tl = new InMemoryTabletLocator();
+//        if (instance instanceof InMemoryInstance) {
+        if (false) {
+//            tl = new TabletLocatorImpl();
             tableId = config.getTableName();
         } else {
-            tableId = Tables.getTableId(instance, tableName);
+            Properties properties = new Properties();
+            StreamSupport
+                .stream(DefaultConfiguration.getInstance().spliterator(), false).forEach(k -> properties.setProperty(k.getKey(), k.getValue()));
             Credentials credentials = new Credentials(config.getConnector().whoami(), new PasswordToken(config.getAccumuloPassword()));
-            tl = TabletLocator.getLocator(new ClientContext(instance, credentials, AccumuloConfiguration.getDefaultConfiguration()), tableId);
+            ClientInfo info = new ClientInfoImpl(properties, credentials.getToken());
+            AccumuloConfiguration serverConf = ClientConfConverter.toAccumuloConf(properties);
+            ClientContext ctx = new ClientContext(new SingletonReservation(), info, serverConf);
+
+            tableId = Tables.getTableId(ctx, tableName).toString();
+//            Credentials credentials = new Credentials(config.getConnector().whoami(), new PasswordToken(config.getAccumuloPassword()));
+            tl = TabletLocator.getLocator(ctx, TableId.of(tableId));
         }
         Iterator<List<ScannerChunk>> chunkIter = Iterators.transform(getQueryDataIterator(), new PushdownFunction(tl, config, settings, tableId));
         

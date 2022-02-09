@@ -3,6 +3,7 @@ package datawave.ingest.util;
 import datawave.util.StringUtils;
 import datawave.util.cli.PasswordConverter;
 import datawave.util.time.DateHelper;
+import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.ClientConfiguration;
@@ -10,14 +11,21 @@ import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.client.Instance;
 import org.apache.accumulo.core.client.ZooKeeperInstance;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.SiteConfiguration;
 import org.apache.accumulo.core.data.ColumnUpdate;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.security.ColumnVisibility;
-import org.apache.accumulo.server.client.HdfsZooInstance;
+//import org.apache.accumulo.server.client.HdfsZooInstance;
+import org.apache.accumulo.fate.zookeeper.ZooUtil;
+import org.apache.accumulo.server.fs.VolumeManager;
+import org.apache.accumulo.server.fs.VolumeManagerImpl;
 import org.apache.commons.lang.time.DateUtils;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
 
+import java.io.IOException;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Date;
@@ -158,7 +166,8 @@ public class GenerateShardSplits {
         if (username != null) {
             // Connect to accumulo
             ClientConfiguration zkConfig = ClientConfiguration.loadDefault().withInstance(instanceName).withZkHosts(zookeepers);
-            Instance instance = (instanceName != null ? new ZooKeeperInstance(zkConfig) : HdfsZooInstance.getInstance());
+//            Instance instance = (instanceName != null ? new ZooKeeperInstance(zkConfig) : HdfsZooInstance.getInstance());
+            Instance instance = (instanceName != null ? new ZooKeeperInstance(zkConfig) : null);
             Connector connector = instance.getConnector(username, new PasswordToken(password));
             
             // add the splits

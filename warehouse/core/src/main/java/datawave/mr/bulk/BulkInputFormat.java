@@ -14,9 +14,11 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Properties;
 import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.UUID;
+import java.util.stream.StreamSupport;
 
 import datawave.ingest.data.config.ingest.AccumuloHelper;
 import datawave.mr.bulk.split.DefaultLocationStrategy;
@@ -40,29 +42,36 @@ import org.apache.accumulo.core.client.TableDeletedException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.TableOfflineException;
 import org.apache.accumulo.core.client.ZooKeeperInstance;
-import org.apache.accumulo.core.client.impl.ClientContext;
-import org.apache.accumulo.core.client.impl.Credentials;
-import org.apache.accumulo.core.client.impl.Tables;
-import org.apache.accumulo.core.client.impl.TabletLocator;
+import org.apache.accumulo.core.clientImpl.ClientConfConverter;
+import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
+import org.apache.accumulo.core.clientImpl.ClientInfoImpl;
+import org.apache.accumulo.core.clientImpl.Credentials;
+import org.apache.accumulo.core.clientImpl.Tables;
+import org.apache.accumulo.core.clientImpl.TabletLocator;
 import org.apache.accumulo.core.client.mapreduce.InputFormatBase;
 import datawave.accumulo.inmemory.InMemoryInstance;
 import datawave.accumulo.inmemory.impl.InMemoryTabletLocator;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.core.clientImpl.TimeoutTabletLocator;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.data.Key;
-import org.apache.accumulo.core.data.impl.KeyExtent;
+import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.data.PartialKey;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.iterators.user.RegExFilter;
 import org.apache.accumulo.core.iterators.user.VersioningIterator;
-import org.apache.accumulo.core.master.state.tables.TableState;
+import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.security.TablePermission;
 import datawave.common.util.ArgumentChecker;
+import org.apache.accumulo.core.singletons.SingletonReservation;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.TextUtil;
 import org.apache.accumulo.fate.util.UtilWaitThread;
@@ -938,16 +947,23 @@ public class BulkInputFormat extends InputFormat<Key,Value> {
     
     Map<String,Map<KeyExtent,List<Range>>> binOfflineTable(JobContext job, String tableName, List<Range> ranges) throws TableNotFoundException,
                     AccumuloException, AccumuloSecurityException, IOException {
+        Properties properties = new Properties();
+        StreamSupport
+            .stream(job.getConfiguration().spliterator(), false).forEach(k -> properties.setProperty(k.getKey(), k.getValue()));
+        Credentials credentials = new Credentials(getUsername(job.getConfiguration()), new PasswordToken(getPassword(job.getConfiguration())));
+        ClientInfo info = new ClientInfoImpl(properties, credentials.getToken());
+        AccumuloConfiguration serverConf = ClientConfConverter.toAccumuloConf(properties);
+        ClientContext ctx = new ClientContext(new SingletonReservation(), info, serverConf);
         
         Map<String,Map<KeyExtent,List<Range>>> binnedRanges = new HashMap<>();
         
         Instance instance = getInstance(job.getConfiguration());
         Connector conn = instance.getConnector(getUsername(job.getConfiguration()), new PasswordToken(getPassword(job.getConfiguration())));
-        String tableId = Tables.getTableId(instance, tableName);
-        
-        if (Tables.getTableState(instance, tableId) != TableState.OFFLINE) {
-            Tables.clearCache(instance);
-            if (Tables.getTableState(instance, tableId) != TableState.OFFLINE) {
+        TableId tableId = Tables.getTableId(ctx, tableName);
+
+        if (Tables.getTableState(ctx, tableId) != TableState.OFFLINE) {
+            Tables.clearCache(ctx);
+            if (Tables.getTableState(ctx, tableId) != TableState.OFFLINE) {
                 throw new AccumuloException("Table is online " + tableName + "(" + tableId + ") cannot scan table in offline mode ");
             }
         }
@@ -959,8 +975,8 @@ public class BulkInputFormat extends InputFormat<Key,Value> {
                 startRow = range.getStartKey().getRow();
             else
                 startRow = new Text();
-            
-            Range metadataRange = new Range(new KeyExtent(tableId, startRow, null).getMetadataEntry(), true, null, false);
+
+            Range metadataRange = new Range(new KeyExtent(tableId, startRow, null).toMetaRow(), true, null, false);
             Scanner scanner = conn.createScanner(MetadataTable.NAME, Authorizations.EMPTY);
             MetadataSchema.TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
             scanner.fetchColumnFamily(MetadataSchema.TabletsSection.LastLocationColumnFamily.NAME);
@@ -992,7 +1008,8 @@ public class BulkInputFormat extends InputFormat<Key,Value> {
                     }
                     
                     if (MetadataSchema.TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN.hasColumns(key)) {
-                        extent = new KeyExtent(key.getRow(), entry.getValue());
+//                        extent = new KeyExtent(key.getRow(), entry.getValue());
+                        extent = KeyExtent.fromMetaPrevRow(entry);
                     }
                     
                 }
@@ -1000,7 +1017,7 @@ public class BulkInputFormat extends InputFormat<Key,Value> {
                 if (location != null)
                     return null;
                 
-                if (!extent.getTableId().equals(tableId)) {
+                if (!extent.tableId().equals(tableId)) {
                     throw new AccumuloException("Saw unexpected table Id " + tableId + " " + extent);
                 }
                 
@@ -1022,7 +1039,7 @@ public class BulkInputFormat extends InputFormat<Key,Value> {
                 
                 rangeList.add(range);
                 
-                if (extent.getEndRow() == null || range.afterEndKey(new Key(extent.getEndRow()).followingKey(PartialKey.ROW))) {
+                if (extent.endRow() == null || range.afterEndKey(new Key(extent.endRow()).followingKey(PartialKey.ROW))) {
                     break;
                 }
                 
@@ -1069,13 +1086,23 @@ public class BulkInputFormat extends InputFormat<Key,Value> {
      *             if the input format is unable to read the password file from the FileSystem
      */
     protected static TabletLocator getTabletLocator(Configuration conf) throws TableNotFoundException, IOException {
-        if (conf.getBoolean(MOCK, false))
-            return new InMemoryTabletLocator();
+//        if (conf.getBoolean(MOCK, false))
+//            return new TimeoutTabletLocator(60000, final ClientContext context, conf.);
+//            return new InMemoryTabletLocator();
+
+
+        Properties properties = new Properties();
+        StreamSupport
+            .stream(conf.spliterator(), false).forEach(k -> properties.setProperty(k.getKey(), k.getValue()));
+        Credentials credentials = new Credentials(getUsername(conf), new PasswordToken(getPassword(conf)));
+        ClientInfo info = new ClientInfoImpl(properties, credentials.getToken());
+        AccumuloConfiguration serverConf = ClientConfConverter.toAccumuloConf(properties);
+        ClientContext ctx = new ClientContext(new SingletonReservation(), info, serverConf);
+
         Instance instance = getInstance(conf);
         String tableName = getTablename(conf);
-        Credentials credentials = new Credentials(getUsername(conf), new PasswordToken(getPassword(conf)));
-        return TabletLocator.getLocator(new ClientContext(instance, credentials, AccumuloConfiguration.getDefaultConfiguration()),
-                        Tables.getTableId(instance, tableName));
+//        Credentials credentials = new Credentials(getUsername(conf), new PasswordToken(getPassword(conf)));
+        return TabletLocator.getLocator(ctx, Tables.getTableId(ctx, tableName));
     }
     
     /**
@@ -1110,19 +1137,28 @@ public class BulkInputFormat extends InputFormat<Key,Value> {
                 }
             } else {
                 Instance instance = getInstance(job.getConfiguration());
-                String tableId = null;
+                TableId tableId = null;
                 tl = getTabletLocator(job.getConfiguration());
                 // its possible that the cache could contain complete, but old information about a tables tablets... so clear it
                 tl.invalidateCache();
-                while (!tl.binRanges(new ClientContext(instance, cbHelper.getCredentials(), AccumuloConfiguration.getDefaultConfiguration()), ranges,
+
+
+                Properties properties = new Properties();
+                StreamSupport
+                    .stream(job.getConfiguration().spliterator(), false).forEach(k -> properties.setProperty(k.getKey(), k.getValue()));
+                Credentials credentials = new Credentials(getUsername(job.getConfiguration()), new PasswordToken(getPassword(job.getConfiguration())));
+                ClientInfo info = new ClientInfoImpl(properties, credentials.getToken());
+                AccumuloConfiguration serverConf = ClientConfConverter.toAccumuloConf(properties);
+                ClientContext ctx = new ClientContext(new SingletonReservation(), info, serverConf);
+                while (!tl.binRanges(ctx, ranges,
                                 binnedRanges).isEmpty()) {
                     if (!(instance instanceof InMemoryInstance)) {
                         if (tableId == null)
-                            tableId = Tables.getTableId(instance, tableName);
-                        if (!Tables.exists(instance, tableId))
-                            throw new TableDeletedException(tableId);
-                        if (Tables.getTableState(instance, tableId) == TableState.OFFLINE)
-                            throw new TableOfflineException(instance, tableId);
+                            tableId = Tables.getTableId(ctx, tableName);
+                        if (!Tables.exists(ctx, tableId))
+                            throw new TableDeletedException(tableId.toString());
+                        if (Tables.getTableState(ctx, tableId) == TableState.OFFLINE)
+                            throw new TableOfflineException(instance, tableId.toString());
                     }
                     binnedRanges.clear();
                     log.warn("Unable to locate bins for specified ranges. Retrying.");
