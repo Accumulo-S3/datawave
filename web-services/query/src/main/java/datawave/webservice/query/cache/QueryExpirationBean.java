@@ -9,8 +9,8 @@ import datawave.webservice.query.metric.QueryMetric;
 import datawave.webservice.query.metric.QueryMetricsBean;
 import datawave.webservice.query.runner.RunningQuery;
 import datawave.webservice.query.util.QueryUncaughtExceptionHandler;
-import org.apache.accumulo.core.trace.Span;
-import org.apache.accumulo.core.trace.Trace;
+//import org.apache.accumulo.core.trace.Span;
+//import org.apache.accumulo.core.trace.Trace;
 import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.deltaspike.core.api.exclude.Exclude;
 import org.apache.log4j.Logger;
@@ -148,16 +148,16 @@ public class QueryExpirationBean {
                 
                 TInfo traceInfo = query.getTraceInfo();
                 if (traceInfo != null) {
-                    Span span = Trace.trace(traceInfo, "query:expiration");
-                    span.data("expiredAt", new Date().toString());
-                    // Spans aren't recorded if they take no time, so sleep for a
-                    // couple milliseconds just to ensure we get something saved.
-                    try {
-                        Thread.sleep(2);
-                    } catch (InterruptedException e) {
-                        // ignore
-                    }
-                    span.stop();
+//                    Span span = Trace.trace(traceInfo, "query:expiration");
+//                    span.data("expiredAt", new Date().toString());
+//                    // Spans aren't recorded if they take no time, so sleep for a
+//                    // couple milliseconds just to ensure we get something saved.
+//                    try {
+//                        Thread.sleep(2);
+//                    } catch (InterruptedException e) {
+//                        // ignore
+//                    }
+//                    span.stop();
                 }
             }
         }

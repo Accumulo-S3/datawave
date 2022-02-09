@@ -86,9 +86,9 @@ import io.protostuff.Schema;
 import io.protostuff.YamlIOUtil;
 import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.security.Authorizations;
-import org.apache.accumulo.core.trace.Span;
-import org.apache.accumulo.core.trace.Trace;
-import org.apache.accumulo.core.trace.Tracer;
+//import org.apache.accumulo.core.trace.Span;
+//import org.apache.accumulo.core.trace.Trace;
+//import org.apache.accumulo.core.trace.Tracer;
 import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.commons.jexl2.parser.TokenMgrError;
@@ -550,34 +550,34 @@ public class QueryExecutorBean implements QueryExecutor {
     public GenericResponse<String> defineQuery(@Required("logicName") @PathParam("logicName") String queryLogicName,
                     MultivaluedMap<String,String> queryParameters, @Context HttpHeaders httpHeaders) {
         CreateQuerySessionIDFilter.QUERY_ID.set(null);
-        
+
         QueryData qd = validateQuery(queryLogicName, queryParameters, httpHeaders);
-        
+
         GenericResponse<String> response = new GenericResponse<>();
-        
+
         // We need to put a disconnected RunningQuery instance into the cache. Otherwise TRANSIENT queries
         // will not exist when reset is called.
-        Span defineSpan = null;
+//        Span defineSpan = null;
         RunningQuery rq;
         try {
             MultivaluedMap<String,String> optionalQueryParameters = new MultivaluedMapImpl<>();
             optionalQueryParameters.putAll(qp.getUnknownParameters(queryParameters));
             Query q = persister.create(qd.userDn, qd.dnList, marking, queryLogicName, qp, optionalQueryParameters);
             response.setResult(q.getId().toString());
-            
+
             // If we're supposed to trace this query, then turn tracing on and set information about the query
             // onto the span so that it is saved in the trace table.
             TInfo traceInfo = null;
             boolean shouldTraceQuery = shouldTraceQuery(qp.getQuery(), qd.userid, false);
             if (shouldTraceQuery) {
-                Span span = Trace.on("query:" + q.getId());
-                log.debug("Tracing query " + q.getId() + " [" + qp.getQuery() + "] on trace ID " + Long.toHexString(span.traceId()));
+//                Span span = Trace.on("query:" + q.getId());
+//                log.debug("Tracing query " + q.getId() + " [" + qp.getQuery() + "] on trace ID " + Long.toHexString(span.traceId()));
                 for (Entry<String,List<String>> param : queryParameters.entrySet()) {
-                    span.data(param.getKey(), param.getValue().get(0));
+//                    span.data(param.getKey(), param.getValue().get(0));
                 }
-                traceInfo = Tracer.traceInfo();
-                
-                defineSpan = Trace.start("query:define");
+//                traceInfo = Tracer.traceInfo();
+
+//                defineSpan = Trace.start("query:define");
             }
             
             AccumuloConnectionFactory.Priority priority = qd.logic.getConnectionPriority();
@@ -600,24 +600,24 @@ public class QueryExecutorBean implements QueryExecutor {
             int statusCode = qe.getBottomQueryException().getStatusCode();
             throw new DatawaveWebApplicationException(qe, response, statusCode);
         } finally {
-            if (null != defineSpan) {
-                // Spans aren't recorded if they take no time, so sleep for a
-                // couple milliseconds just to ensure we get something saved.
-                try {
-                    Thread.sleep(2);
-                } catch (InterruptedException e) {
-                    // ignore
-                }
-                
-                defineSpan.stop();
-                
-                // TODO: not sure this makes any sense anymore in Accumulo 1.8.1
-                // if (null != defineSpan.parent()) {
-                // // Stop the main query span since we're done working with it on this thread.
-                // // We'll continue it later.
-                // defineSpan.parent().stop();
-                // }
-            }
+//            if (null != defineSpan) {
+//                // Spans aren't recorded if they take no time, so sleep for a
+//                // couple milliseconds just to ensure we get something saved.
+//                try {
+//                    Thread.sleep(2);
+//                } catch (InterruptedException e) {
+//                    // ignore
+//                }
+//
+//                defineSpan.stop();
+//
+//                // TODO: not sure this makes any sense anymore in Accumulo 1.8.1
+//                // if (null != defineSpan.parent()) {
+//                // // Stop the main query span since we're done working with it on this thread.
+//                // // We'll continue it later.
+//                // defineSpan.parent().stop();
+//                // }
+//            }
         }
     }
     
@@ -652,7 +652,7 @@ public class QueryExecutorBean implements QueryExecutor {
         Query q = null;
         Connector connection = null;
         AccumuloConnectionFactory.Priority priority;
-        Span createSpan = null;
+//        Span createSpan = null;
         RunningQuery rq = null;
         try {
             // Default hasResults to true. If a query logic is actually able to set this value,
@@ -713,14 +713,14 @@ public class QueryExecutorBean implements QueryExecutor {
             TInfo traceInfo = null;
             boolean shouldTraceQuery = shouldTraceQuery(qp.getQuery(), qd.userid, qp.isTrace());
             if (shouldTraceQuery) {
-                Span span = Trace.on("query:" + q.getId());
-                log.debug("Tracing query " + q.getId() + " [" + qp.getQuery() + "] on trace ID " + Long.toHexString(span.traceId()));
-                for (Entry<String,List<String>> param : queryParameters.entrySet()) {
-                    span.data(param.getKey(), param.getValue().get(0));
-                }
-                traceInfo = Tracer.traceInfo();
-                
-                createSpan = Trace.start("query:create");
+//                Span span = Trace.on("query:" + q.getId());
+//                log.debug("Tracing query " + q.getId() + " [" + qp.getQuery() + "] on trace ID " + Long.toHexString(span.traceId()));
+//                for (Entry<String,List<String>> param : queryParameters.entrySet()) {
+//                    span.data(param.getKey(), param.getValue().get(0));
+//                }
+//                traceInfo = Tracer.traceInfo();
+//
+//                createSpan = Trace.start("query:create");
             }
             
             // hold on to a reference of the query logic so we cancel it if need be.
@@ -796,17 +796,17 @@ public class QueryExecutorBean implements QueryExecutor {
                 throw new DatawaveWebApplicationException(qe, response, statusCode);
             }
         } finally {
-            if (createSpan != null) {
-                createSpan.stop();
-                // TODO: not sure this makes any sense anymore in Accumulo 1.8.1
-                // Stop the main query span since we're done working with it on this thread.
-                // We'll continue it later.
-                // createSpan.parent().stop();
-            }
-            if (null != q) {
-                // - Remove the logic from the cache
-                qlCache.poll(q.getId().toString());
-            }
+//            if (createSpan != null) {
+//                createSpan.stop();
+//                // TODO: not sure this makes any sense anymore in Accumulo 1.8.1
+//                // Stop the main query span since we're done working with it on this thread.
+//                // We'll continue it later.
+//                // createSpan.parent().stop();
+//            }
+//            if (null != q) {
+//                // - Remove the logic from the cache
+//                qlCache.poll(q.getId().toString());
+//            }
         }
     }
     
@@ -1161,7 +1161,7 @@ public class QueryExecutorBean implements QueryExecutor {
      * @HTTP 500 internal server error
      */
     @PUT
-    @POST
+//    @POST
     @Path("/{id}/reset")
     @Produces({"application/xml", "text/xml", "application/json", "text/yaml", "text/x-yaml", "application/x-yaml", "application/x-protobuf",
             "application/x-protostuff"})
@@ -1178,7 +1178,7 @@ public class QueryExecutorBean implements QueryExecutor {
         
         Connector connection = null;
         RunningQuery query = null;
-        Span span = null;
+//        Span span = null;
         
         try {
             ctx.getUserTransaction().begin();
@@ -1188,7 +1188,7 @@ public class QueryExecutorBean implements QueryExecutor {
             // If we're tracing this query, then continue the trace for the reset call.
             TInfo traceInfo = query.getTraceInfo();
             if (traceInfo != null) {
-                span = Trace.trace(traceInfo, "query:reset");
+//                span = Trace.trace(traceInfo, "query:reset");
             }
             
             // Lock this so that this query cannot be used concurrently.
@@ -1299,9 +1299,9 @@ public class QueryExecutorBean implements QueryExecutor {
                 throw new DatawaveWebApplicationException(qe, response);
             } finally {
                 // Stop timing on this trace, if any
-                if (span != null) {
-                    span.stop();
-                }
+//                if (span != null) {
+//                    span.stop();
+//                }
             }
         }
         
@@ -1360,11 +1360,11 @@ public class QueryExecutorBean implements QueryExecutor {
         }
     }
     
-    private BaseQueryResponse _next(RunningQuery query, String queryId, Collection<String> proxyServers, Span span) throws Exception {
+    private BaseQueryResponse _next(RunningQuery query, String queryId, Collection<String> proxyServers) throws Exception {
         // If we're tracing this query, then continue the trace for the next call.
         TInfo traceInfo = query.getTraceInfo();
         if (traceInfo != null) {
-            span = Trace.trace(traceInfo, "query:next");
+//            span = Trace.trace(traceInfo, "query:next");
         }
         
         ResultsPage resultList;
@@ -1387,9 +1387,9 @@ public class QueryExecutorBean implements QueryExecutor {
         response.setLogicName(query.getLogic().getLogicName());
         response.setQueryId(queryId);
         
-        if (span != null) {
-            span.data("pageNumber", Long.toString(pageNum));
-        }
+//        if (span != null) {
+//            span.data("pageNumber", Long.toString(pageNum));
+//        }
         
         query.getMetric().setProxyServers(proxyServers);
         
@@ -1930,7 +1930,7 @@ public class QueryExecutorBean implements QueryExecutor {
             proxyServers = dp.getProxyServers();
         }
         
-        Span span = null;
+//        Span span = null;
         RunningQuery query = null;
         Query contentLookupSettings = null;
         try {
@@ -1971,7 +1971,7 @@ public class QueryExecutorBean implements QueryExecutor {
                 
                 // Set the active call and get next
                 query.setActiveCall(true);
-                response = _next(query, id, proxyServers, span);
+//                response = _next(query, id, proxyServers, span);
                 
                 // Conditionally swap the standard response with content
                 if (checkForContentLookup) {
@@ -2083,9 +2083,9 @@ public class QueryExecutorBean implements QueryExecutor {
                 log.error("Error committing transaction: Unknown error", e);
             } finally {
                 // Stop timing on this trace, if any
-                if (span != null) {
-                    span.stop();
-                }
+//                if (span != null) {
+//                    span.stop();
+//                }
             }
         }
         
@@ -2116,7 +2116,7 @@ public class QueryExecutorBean implements QueryExecutor {
      * @HTTP 500 internal server error
      */
     @PUT
-    @POST
+//    @POST
     @Produces({"application/xml", "text/xml", "application/json", "text/yaml", "text/x-yaml", "application/x-yaml", "application/x-protobuf",
             "application/x-protostuff"})
     @Path("/{id}/close")
@@ -2184,7 +2184,7 @@ public class QueryExecutorBean implements QueryExecutor {
      * @return
      */
     @PUT
-    @POST
+//    @POST
     @Produces({"application/xml", "text/xml", "application/json", "text/yaml", "text/x-yaml", "application/x-yaml", "application/x-protobuf",
             "application/x-protostuff"})
     @Path("/{id}/adminClose")
@@ -2252,18 +2252,18 @@ public class QueryExecutorBean implements QueryExecutor {
         // The trace was already stopped, but mark the time we closed it in the trace data.
         TInfo traceInfo = query.getTraceInfo();
         if (traceInfo != null) {
-            Span span = Trace.trace(traceInfo, "query:close");
-            span.data("closedAt", new Date().toString());
-            // Spans aren't recorded if they take no time, so sleep for a
-            // couple milliseconds just to ensure we get something saved.
-            try {
-                Thread.sleep(2);
-            } catch (InterruptedException e) {
-                // ignore
-            }
-            span.stop();
-            // TODO: not sure this makes any sense anymore in Accumulo 1.8.1
-            // Tracer.getInstance().flush();
+//            Span span = Trace.trace(traceInfo, "query:close");
+//            span.data("closedAt", new Date().toString());
+//            // Spans aren't recorded if they take no time, so sleep for a
+//            // couple milliseconds just to ensure we get something saved.
+//            try {
+//                Thread.sleep(2);
+//            } catch (InterruptedException e) {
+//                // ignore
+//            }
+//            span.stop();
+//            // TODO: not sure this makes any sense anymore in Accumulo 1.8.1
+//            // Tracer.getInstance().flush();
         }
     }
     
@@ -2285,7 +2285,7 @@ public class QueryExecutorBean implements QueryExecutor {
      * @HTTP 500 internal server error
      */
     @PUT
-    @POST
+//    @POST
     @Produces({"application/xml", "text/xml", "application/json", "text/yaml", "text/x-yaml", "application/x-yaml", "application/x-protobuf",
             "application/x-protostuff"})
     @Path("/{id}/cancel")
@@ -2350,8 +2350,7 @@ public class QueryExecutorBean implements QueryExecutor {
      * @param id
      * @return
      */
-    @PUT
-    @POST
+    @PUT//    @POST
     @Produces({"application/xml", "text/xml", "application/json", "text/yaml", "text/x-yaml", "application/x-yaml", "application/x-protobuf",
             "application/x-protostuff"})
     @Path("/{id}/adminCancel")
@@ -2775,8 +2774,7 @@ public class QueryExecutorBean implements QueryExecutor {
      * @HTTP 404 queries not found using {@code name}
      * @HTTP 500 internal server error
      */
-    @PUT
-    @POST
+    @PUT//    @POST
     @Produces({"application/xml", "text/xml", "application/json", "text/yaml", "text/x-yaml", "application/x-yaml", "application/x-protobuf",
             "application/x-protostuff"})
     @Path("/{id}/update")
@@ -3387,7 +3385,7 @@ public class QueryExecutorBean implements QueryExecutor {
             }
             
             boolean done = false;
-            Span span = null;
+//            Span span = null;
             List<PageMetric> pageMetrics = rq.getMetric().getPageTimes();
             
             // Loop over each page of query results, and notify the observer about each page.
@@ -3396,7 +3394,7 @@ public class QueryExecutorBean implements QueryExecutor {
                 long callStart = System.nanoTime();
                 rq.setActiveCall(true);
                 try {
-                    BaseQueryResponse page = _next(rq, queryId, proxyServers, span);
+                    BaseQueryResponse page = _next(rq, queryId, proxyServers);
                     long serializationStart = System.nanoTime();
                     observer.queryResultsAvailable(page);
                     long serializationTime = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - serializationStart);
@@ -3504,13 +3502,13 @@ public class QueryExecutorBean implements QueryExecutor {
                     
                     boolean sentResults = false;
                     boolean done = false;
-                    Span span = null;
+//                    Span span = null;
                     List<PageMetric> pageMetrics = rq.getMetric().getPageTimes();
                     
                     do {
                         try {
                             long callStart = System.nanoTime();
-                            BaseQueryResponse page = _next(rq, queryId, proxies, span);
+                            BaseQueryResponse page = _next(rq, queryId, proxies);
                             PageMetric pm = pageMetrics.get(pageMetrics.size() - 1);
                             
                             // Wrap the output stream so that we can get a byte count
