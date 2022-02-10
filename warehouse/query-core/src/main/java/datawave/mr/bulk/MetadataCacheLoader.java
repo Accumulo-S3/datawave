@@ -6,12 +6,15 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.Set;
+
+import com.google.common.collect.Table;
 import datawave.query.util.Tuple2;
 import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.client.RowIterator;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.data.Key;
-import org.apache.accumulo.core.data.impl.KeyExtent;
+import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.data.PartialKey;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
@@ -54,7 +57,7 @@ public class MetadataCacheLoader extends CacheLoader<Range,Set<Tuple2<String,Set
         final String stopRow = inputKey.getEndKey().getRow().toString().intern();
         
         // create a scan range that goes through the default tablet
-        Key endKey = new Key(new KeyExtent(tableId, null, null).getMetadataEntry()).followingKey(PartialKey.ROW);
+        Key endKey = new Key(new KeyExtent(TableId.of(tableId), null, null).toMetaRow()).followingKey(PartialKey.ROW);
         Range metadataRange = new Range(inputKey.getStartKey(), inputKey.isStartKeyInclusive(), endKey, false);
         
         Scanner scanner = conn.createScanner(MetadataTable.NAME, Authorizations.EMPTY);
@@ -144,7 +147,7 @@ public class MetadataCacheLoader extends CacheLoader<Range,Set<Tuple2<String,Set
         } else {
             startRow = new Text(); // setting to an empty text will result in a start key of <tableId>;
         }
-        Key startKey = new Key(new KeyExtent(tableId, startRow, null).getMetadataEntry());
+        Key startKey = new Key(new KeyExtent(TableId.of(tableId), startRow, null).toMetaRow());
         
         Text endRow;
         if (range.getEndKey() != null) {
@@ -159,7 +162,7 @@ public class MetadataCacheLoader extends CacheLoader<Range,Set<Tuple2<String,Set
         } else {
             endRow = null; // setting to null will result in a end key of <tableId><
         }
-        Key endKey = new Key(new KeyExtent(tableId, endRow, null).getMetadataEntry());
+        Key endKey = new Key(new KeyExtent(TableId.of(tableId), endRow, null).toMetaRow());
         Range metadataRange = new Range(startKey, true, endKey, true);
         if (log.isDebugEnabled()) {
             log.debug("Converted " + range + " into metadata range " + metadataRange);

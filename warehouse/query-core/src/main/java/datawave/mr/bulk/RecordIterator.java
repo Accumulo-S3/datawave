@@ -11,6 +11,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -24,28 +25,36 @@ import org.apache.accumulo.core.client.SampleNotPresentException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.sample.SamplerConfiguration;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.DefaultConfiguration;
+import org.apache.accumulo.core.conf.IterConfigUtil;
+import org.apache.accumulo.core.conf.IterLoad;
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.crypto.CryptoServiceFactory;
 import org.apache.accumulo.core.data.ByteSequence;
 import org.apache.accumulo.core.data.Key;
+import org.apache.accumulo.core.data.PartialKey;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
-import org.apache.accumulo.core.data.thrift.IterInfo;
+import org.apache.accumulo.core.dataImpl.thrift.IterInfo;
 import org.apache.accumulo.core.file.FileOperations;
 import org.apache.accumulo.core.file.FileSKVIterator;
-import org.apache.accumulo.core.file.blockfile.BlockFileReader;
+//import org.apache.accumulo.core.file.blockfile.BlockFileReader;
+import org.apache.accumulo.core.file.blockfile.impl.CachableBlockFile;
 import org.apache.accumulo.core.file.blockfile.impl.CachableBlockFile.Reader;
+import org.apache.accumulo.core.file.map.MapFileOperations;
 import org.apache.accumulo.core.file.rfile.RFile;
 import org.apache.accumulo.core.file.rfile.RFileOperations;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
 import org.apache.accumulo.core.iterators.IteratorUtil;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
+import org.apache.accumulo.core.iterators.ServerWrappingIterator;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
-import org.apache.accumulo.core.iterators.system.DeletingIterator;
-import org.apache.accumulo.core.iterators.system.MultiIterator;
-import org.apache.accumulo.core.iterators.system.VisibilityFilter;
+import org.apache.accumulo.core.iteratorsImpl.system.DeletingIterator;
+import org.apache.accumulo.core.iteratorsImpl.system.MultiIterator;
+import org.apache.accumulo.core.iteratorsImpl.system.VisibilityFilter;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.security.ColumnVisibility;
-import org.apache.accumulo.core.util.CachedConfiguration;
+//import org.apache.accumulo.core.util.CachedConfiguration;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
@@ -147,29 +156,31 @@ public class RecordIterator extends RangeSplit implements SortedKeyValueIterator
     
     private static final Logger log = Logger.getLogger(RecordIterator.class);
     
-    public static class RFileEnvironment implements IteratorEnvironment {
+    public class RFileEnvironment implements IteratorEnvironment {
         
-        AccumuloConfiguration conf;
+//        AccumuloConfiguration conf;
         
-        public RFileEnvironment(AccumuloConfiguration conf) {
-            this.conf = conf;
-        }
+//        public RFileEnvironment(AccumuloConfiguration conf) {
+//            this.conf = conf;
+//        }
         
-        public RFileEnvironment() {
-            this.conf = AccumuloConfiguration.getDefaultConfiguration();
-        }
+//        public RFileEnvironment() {
+//            this.conf = DefaultConfiguration.getInstance();
+//        }
         
         @Override
         public SortedKeyValueIterator<Key,Value> reserveMapFileReader(String mapFileName) throws IOException {
-            Configuration conf = CachedConfiguration.getInstance();
+
+//            Configuration conf = CachedConfiguration.getInstance();
             FileSystem fs = FileSystem.get(conf);
-            return RFileOperations.getInstance().newReaderBuilder().forFile(mapFileName, fs, conf)
-                            .withTableConfiguration(AccumuloConfiguration.getDefaultConfiguration()).build();
+            return RFileOperations.getInstance().newReaderBuilder().forFile(mapFileName, fs, conf,
+                CryptoServiceFactory.newDefaultInstance())
+                            .withTableConfiguration(DefaultConfiguration.getInstance()).build();
         }
         
         @Override
         public AccumuloConfiguration getConfig() {
-            return conf;
+            return acuTableConf;
         }
         
         @Override
@@ -311,11 +322,10 @@ public class RecordIterator extends RangeSplit implements SortedKeyValueIterator
         futures.clear();
         numberFiles = pathSet.size();
         for (Path path : pathSet) {
-            
             try {
                 
                 if (null != path)
-                    futures.add(iterFromFile(fops, path, conf));
+                    futures.add(iterFromFile(fops, path, conf, UUID.randomUUID().toString()));
             } catch (Exception e) {
                 
             }
@@ -346,7 +356,7 @@ public class RecordIterator extends RangeSplit implements SortedKeyValueIterator
         
         boolean applyDeletingIterator = conf.getBoolean("range.record.reader.apply.delete", true);
         if (applyDeletingIterator)
-            topIter = new DeletingIterator(topIter, false);
+            topIter = new DeletingIteratorV2(topIter, false);
         
         try {
             globalIter = applyTableIterators(topIter, conf);
@@ -386,9 +396,11 @@ public class RecordIterator extends RangeSplit implements SortedKeyValueIterator
             defaultSecurityLabel = cv.getExpression();
             
             SortedKeyValueIterator<Key,Value> visFilter = VisibilityFilter.wrap(topIter, auths, defaultSecurityLabel);
-            
-            return IteratorUtil.loadIterators(IteratorScope.scan, visFilter, null, acuTableConf, serverSideIteratorList, serverSideIteratorOptions, iterEnv,
-                            false);
+            IterLoad il = IterConfigUtil.loadIterConf(IteratorScope.scan, serverSideIteratorList,
+                serverSideIteratorOptions, acuTableConf);
+            return IterConfigUtil.loadIterators(visFilter, il.iterEnv(iterEnv).iterOpts(serverSideIteratorOptions).iters(serverSideIteratorList));
+//            return IteratorUtil.loadIterators(IteratorScope.scan, visFilter, null, acuTableConf, serverSideIteratorList, serverSideIteratorOptions, iterEnv,
+//                            false);
         }
         
         return topIter;
@@ -445,7 +457,7 @@ public class RecordIterator extends RangeSplit implements SortedKeyValueIterator
         return newIter;
     }
     
-    protected Future<SortedKeyValueIterator<Key,Value>> iterFromFile(final FileOperations ops, final Path path, final Configuration conf)
+    protected Future<SortedKeyValueIterator<Key,Value>> iterFromFile(final FileOperations ops, final Path path, final Configuration conf, String cacheId)
                     throws TableNotFoundException, IOException {
         
         return executor.submit(() -> {
@@ -478,8 +490,16 @@ public class RecordIterator extends RangeSplit implements SortedKeyValueIterator
                 closeable.setInputStream(fs.open(path));
                 
                 long length = fs.getFileStatus(path).getLen();
-                
-                closeable.setBlockFile(new Reader(path.getName(), closeable.getInputStream(), length, conf, null, null, acuTableConf));
+
+                CachableBlockFile.Reader r = new CachableBlockFile.Reader(
+                    new CachableBlockFile.CachableBuilder()
+                    .conf(conf)
+                    .length(length)
+                    .fsPath(fs, path)
+                    .input(closeable.getInputStream(), cacheId)
+                );
+                closeable.setBlockFile(r);
+//                closeable.setBlockFile(new Reader(path.getName(), closeable.getInputStream(), length, conf, null, null, acuTableConf));
                 
                 fileIterator = new RFile.Reader(closeable.getReader());
                 
@@ -807,7 +827,7 @@ public class RecordIterator extends RangeSplit implements SortedKeyValueIterator
             this.fileIterator = fileIterator;
         }
         
-        public BlockFileReader getReader() {
+        public CachableBlockFile.Reader getReader() {
             return reader;
         }
         
@@ -861,5 +881,112 @@ public class RecordIterator extends RangeSplit implements SortedKeyValueIterator
             
         }
     }
-    
+
+
+    public static class DeletingIteratorV2 extends ServerWrappingIterator {
+        private boolean propagateDeletes;
+        private Key workKey = new Key();
+
+        public enum Behavior {
+            PROCESS, FAIL
+        }
+
+        @Override
+        public DeletingIteratorV2 deepCopy(IteratorEnvironment env) {
+            return new DeletingIteratorV2(this, env);
+        }
+
+        private DeletingIteratorV2(DeletingIteratorV2 other, IteratorEnvironment env) {
+            super(other.source.deepCopy(env));
+            propagateDeletes = other.propagateDeletes;
+        }
+
+        private DeletingIteratorV2(SortedKeyValueIterator<Key,Value> iterator, boolean propagateDeletes) {
+            super(iterator);
+            this.propagateDeletes = propagateDeletes;
+        }
+
+        @Override
+        public void next() throws IOException {
+            if (source.getTopKey().isDeleted())
+                skipRowColumn();
+            else
+                source.next();
+            findTop();
+        }
+
+        @Override
+        public void seek(Range range, Collection<ByteSequence> columnFamilies, boolean inclusive)
+            throws IOException {
+            // do not want to seek to the middle of a row
+            Range seekRange = IteratorUtil.maximizeStartKeyTimeStamp(range);
+
+            source.seek(seekRange, columnFamilies, inclusive);
+            findTop();
+
+            if (range.getStartKey() != null) {
+                while (source.hasTop() && source.getTopKey().compareTo(range.getStartKey(),
+                    PartialKey.ROW_COLFAM_COLQUAL_COLVIS_TIME) < 0) {
+                    next();
+                }
+
+                while (hasTop() && range.beforeStartKey(getTopKey())) {
+                    next();
+                }
+            }
+        }
+
+        private void findTop() throws IOException {
+            if (!propagateDeletes) {
+                while (source.hasTop() && source.getTopKey().isDeleted()) {
+                    skipRowColumn();
+                }
+            }
+        }
+
+        private void skipRowColumn() throws IOException {
+            workKey.set(source.getTopKey());
+
+            Key keyToSkip = workKey;
+            source.next();
+
+            while (source.hasTop()
+                && source.getTopKey().equals(keyToSkip, PartialKey.ROW_COLFAM_COLQUAL_COLVIS)) {
+                source.next();
+            }
+        }
+
+        @Override
+        public void init(SortedKeyValueIterator<Key,Value> source, Map<String,String> options,
+            IteratorEnvironment env) {
+            throw new UnsupportedOperationException();
+        }
+
+        public static SortedKeyValueIterator<Key,Value> wrap(SortedKeyValueIterator<Key,Value> source,
+            boolean propagateDeletes, org.apache.accumulo.core.iteratorsImpl.system.DeletingIterator.Behavior behavior) {
+            switch (behavior) {
+                case PROCESS:
+                    return new DeletingIteratorV2(source, propagateDeletes);
+                case FAIL:
+                    return new ServerWrappingIterator(source) {
+                        @Override
+                        public Key getTopKey() {
+                            Key top = source.getTopKey();
+                            if (top.isDeleted()) {
+                                throw new IllegalStateException("Saw unexpected delete " + top);
+                            }
+                            return top;
+                        }
+                    };
+                default:
+                    throw new IllegalArgumentException("Unknown behavior " + behavior);
+            }
+        }
+
+        public static org.apache.accumulo.core.iteratorsImpl.system.DeletingIterator.Behavior getBehavior(AccumuloConfiguration conf) {
+            return org.apache.accumulo.core.iteratorsImpl.system.DeletingIterator.Behavior
+                .valueOf(conf.get(Property.TABLE_DELETE_BEHAVIOR).toUpperCase());
+        }
+    }
+
 }

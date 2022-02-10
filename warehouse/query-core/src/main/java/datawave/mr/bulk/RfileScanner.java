@@ -7,20 +7,31 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import datawave.ingest.data.config.ingest.AccumuloHelper;
 import org.apache.accumulo.core.client.BatchScanner;
 import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.client.IteratorSetting;
+import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
+import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
+import org.apache.accumulo.core.clientImpl.Credentials;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.ClientProperty;
+import org.apache.accumulo.core.conf.ConfigurationCopy;
+import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.data.ByteSequence;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.security.Authorizations;
 import datawave.common.util.ArgumentChecker;
+import org.apache.accumulo.core.singletons.SingletonReservation;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.mapreduce.InputSplit;
@@ -168,7 +179,22 @@ public class RfileScanner extends SessionOptions implements BatchScanner, Closea
                 }
                 AccumuloConfiguration acuTableConf = tableConfigMap.getIfPresent(tableId);
                 if (null == acuTableConf) {
-                    acuTableConf = AccumuloConfiguration.getTableConfiguration(connector, tableId);
+                    // new....
+                    AccumuloHelper helper = new AccumuloHelper();
+                    helper.setup(conf);
+                    Properties properties = new Properties();
+                    properties.setProperty(ClientProperty.INSTANCE_NAME.getKey(), helper.getInstanceName());
+                    properties.setProperty(ClientProperty.INSTANCE_ZOOKEEPERS.getKey(), helper.getZooKeepers());
+                    properties.setProperty(ClientProperty.AUTH_PRINCIPAL.getKey(), config.getConnector().whoami());
+                    AuthenticationToken authToken = new PasswordToken(config.getAccumuloPassword());
+                    Credentials creds = new Credentials(config.getConnector().whoami(), authToken);
+                    ClientContext clientCtx = new ClientContext(SingletonReservation.noop(), ClientInfo
+                        .from(properties, authToken), DefaultConfiguration
+                        .getInstance());
+                    acuTableConf =
+                        new ConfigurationCopy(clientCtx.tableOperations().getConfiguration(table));
+
+//                    acuTableConf = AccumuloConfiguration.getTableConfiguration(connector, tableId);
                     tableConfigMap.put(tableId, acuTableConf);
                 }
                 

@@ -14,7 +14,6 @@ import org.apache.accumulo.core.data.ColumnUpdate;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.security.ColumnVisibility;
-import org.apache.accumulo.server.client.HdfsZooInstance;
 import org.apache.commons.lang.time.DateUtils;
 import org.apache.hadoop.io.Text;
 
@@ -156,9 +155,11 @@ public class GenerateShardSplits {
         }
         
         if (username != null) {
+            Instance instance = new ZooKeeperInstance(ClientConfiguration.loadDefault().withInstance(instanceName).withZkHosts(zookeepers));
+
             // Connect to accumulo
             ClientConfiguration zkConfig = ClientConfiguration.loadDefault().withInstance(instanceName).withZkHosts(zookeepers);
-            Instance instance = (instanceName != null ? new ZooKeeperInstance(zkConfig) : HdfsZooInstance.getInstance());
+//            Instance instance = (instanceName != null ? new ZooKeeperInstance(zkConfig) : HdfsZooInstance.getInstance());
             Connector connector = instance.getConnector(username, new PasswordToken(password));
             
             // add the splits

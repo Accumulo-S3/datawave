@@ -5,6 +5,7 @@ import com.google.common.collect.Lists;
 import datawave.ingest.data.TypeRegistry;
 import datawave.ingest.mapreduce.StandaloneStatusReporter;
 import datawave.util.cli.PasswordConverter;
+import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.ClientConfiguration;
@@ -12,14 +13,18 @@ import org.apache.accumulo.core.client.Instance;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.ZooKeeperInstance;
 import org.apache.accumulo.core.client.admin.TableOperations;
-import org.apache.accumulo.core.client.impl.ClientContext;
-import org.apache.accumulo.core.client.impl.Credentials;
-import org.apache.accumulo.core.client.impl.MasterClient;
+import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
+import org.apache.accumulo.core.clientImpl.Credentials;
+import org.apache.accumulo.core.clientImpl.ManagerClient;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
-import org.apache.accumulo.core.master.thrift.MasterClientService.Iface;
-import org.apache.accumulo.core.master.thrift.MasterMonitorInfo;
+import org.apache.accumulo.core.conf.ClientProperty;
+import org.apache.accumulo.core.conf.DefaultConfiguration;
+import org.apache.accumulo.core.manager.thrift.ManagerClientService.Iface;
+import org.apache.accumulo.core.manager.thrift.ManagerMonitorInfo;
 import org.apache.accumulo.core.master.thrift.TableInfo;
+import org.apache.accumulo.core.singletons.SingletonReservation;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileChecksum;
@@ -60,6 +65,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Observer;
+import java.util.Properties;
 import java.util.Stack;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -677,9 +683,19 @@ public final class BulkIngestMapFileLoader implements Runnable {
         ZooKeeperInstance instance = new ZooKeeperInstance(ClientConfiguration.loadDefault().withInstance(instanceName).withZkHosts(zooKeepers));
         
         Iface client = null;
+        // new.....
+        Properties properties = new Properties();
+        properties.setProperty(ClientProperty.INSTANCE_NAME.getKey(), instanceName);
+        properties.setProperty(ClientProperty.INSTANCE_ZOOKEEPERS.getKey(), this.zooKeepers);
+        properties.setProperty(ClientProperty.AUTH_PRINCIPAL.getKey(), this.credentials.getPrincipal());
+        ClientContext clientCtx = new ClientContext(SingletonReservation.noop(), ClientInfo
+            .from(properties, credentials.getToken()), DefaultConfiguration
+            .getInstance());
         try {
-            client = MasterClient.getConnection(new ClientContext(instance, credentials, AccumuloConfiguration.getDefaultConfiguration()));
-            MasterMonitorInfo mmi = client.getMasterStats(null, credentials.toThrift(instance));
+            client = ManagerClient.getConnection(clientCtx);
+//            client = ManagerClient.getConnection(new ClientContext(instance, credentials, DefaultConfiguration
+//                .getInstance()));
+            ManagerMonitorInfo mmi = client.getManagerStats(null, credentials.toThrift(instance.getInstanceID()));
             Map<String,TableInfo> tableStats = mmi.getTableMap();
             
             for (java.util.Map.Entry<String,TableInfo> e : tableStats.entrySet()) {
@@ -692,7 +708,7 @@ public final class BulkIngestMapFileLoader implements Runnable {
             log.error("Unable to retrieve major compaction stats: " + e.getMessage());
         } finally {
             if (client != null) {
-                MasterClient.close(client);
+                ManagerClient.close(client, clientCtx);
             }
         }
         

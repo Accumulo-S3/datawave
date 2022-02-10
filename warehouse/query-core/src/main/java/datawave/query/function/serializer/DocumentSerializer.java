@@ -6,8 +6,8 @@ import java.util.Map.Entry;
 import datawave.query.DocumentSerialization;
 import datawave.query.attributes.Document;
 
-import org.apache.accumulo.core.trace.Span;
-import org.apache.accumulo.core.trace.Trace;
+//import org.apache.accumulo.core.trace.Span;
+//import org.apache.accumulo.core.trace.Trace;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Value;
 
@@ -43,28 +43,28 @@ public abstract class DocumentSerializer implements Function<Entry<Key,Document>
     
     @Override
     public Entry<Key,Value> apply(Entry<Key,Document> from) {
-        Span s = null;
+//        Span s = null;
         try {
-            s = Trace.start("Document Serialization");
-            s.data("Serialization type", this.concreteName);
+//            s = Trace.start("Document Serialization");
+//            s.data("Serialization type", this.concreteName);
             
             byte[] bytes = serialize(from.getValue());
             
-            s.data("Raw size", Integer.toString(bytes.length));
+//            s.data("Raw size", Integer.toString(bytes.length));
             
-            Value v = getValue(bytes, s);
+            Value v = getValue(bytes);
             
             return Maps.immutableEntry(from.getKey(), v);
         } finally {
-            if (null != s) {
-                s.stop();
-            }
+//            if (null != s) {
+//                s.stop();
+//            }
         }
     }
     
     public abstract byte[] serialize(Document d);
     
-    protected Value getValue(byte[] document, Span span) {
+    protected Value getValue(byte[] document) {
         byte[] header;
         byte[] dataToWrite;
         
@@ -72,7 +72,7 @@ public abstract class DocumentSerializer implements Function<Entry<Key,Document>
         if (DocumentSerialization.NONE != this.compression && document.length > minCompressionSize) {
             header = DocumentSerialization.getHeader(compression);
             dataToWrite = DocumentSerialization.writeBody(document, this.compression);
-            span.data("Compressed size", Integer.toString(dataToWrite.length));
+//            span.data("Compressed size", Integer.toString(dataToWrite.length));
         } else {
             header = DocumentSerialization.getHeader();
             dataToWrite = document;
