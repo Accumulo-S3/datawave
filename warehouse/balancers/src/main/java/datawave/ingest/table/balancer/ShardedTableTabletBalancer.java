@@ -5,10 +5,14 @@ import java.util.function.Function;
 import com.google.common.collect.Iterables;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.data.TabletId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.master.thrift.TabletServerStatus;
+import org.apache.accumulo.core.spi.balancer.GroupBalancer;
+import org.apache.accumulo.core.spi.balancer.data.TabletServerId;
+import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.util.Pair;
-import org.apache.accumulo.server.master.balancer.GroupBalancer;
+//import org.apache.accumulo.server.master.balancer.GroupBalancer;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.server.master.state.TabletMigration;
 import org.apache.hadoop.io.Text;
@@ -25,6 +29,8 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * A custom tablet balancer designed to work with a date-partitioned (sharded) table. This balancer is based on the {@link GroupBalancer}, which spreads tablets
@@ -44,53 +50,84 @@ public class ShardedTableTabletBalancer extends GroupBalancer {
     
     private static final Logger log = Logger.getLogger(ShardedTableTabletBalancer.class);
     private Map<KeyExtent,TServerInstance> tabletLocationCache;
-    private Function<KeyExtent,String> partitioner;
-    private String tableId;
+//    private Function<TableId,String> partitioner;
+    private TableId tableId;
     
     public ShardedTableTabletBalancer(String tableId) {
         super(TableId.of(tableId));
-        this.tableId = tableId;
+        this.tableId = TableId.of(tableId);
     }
     
     // synchronized to ensure exclusivity between getAssignments and balance calls
+//    @Override
+//    public synchronized void getAssignments(SortedMap<TServerInstance,TabletServerStatus> current, Map<KeyExtent,TServerInstance> unassigned,
+//                    Map<KeyExtent,TServerInstance> assignments) {
+//        // During getAssignments, we'll just partition using the shard's day.
+//        partitioner = new ShardDayPartitioner();
+//
+//        super.getAssignments(current, unassigned, assignments);
+//    }
     @Override
-    public synchronized void getAssignments(SortedMap<TServerInstance,TabletServerStatus> current, Map<KeyExtent,TServerInstance> unassigned,
-                    Map<KeyExtent,TServerInstance> assignments) {
-        // During getAssignments, we'll just partition using the shard's day.
-        partitioner = new ShardDayPartitioner();
-        
-        super.getAssignments(current, unassigned, assignments);
+    public synchronized void getAssignments(AssignmentParameters parameters) {
+//        // During getAssignments, we'll just partition using the shard's day.
+//        partitioner = new ShardDayPartitioner();
+
+        super.getAssignments(parameters);
     }
     
     // synchronized to ensure exclusivity between getAssignments and balance calls
+//    @Override
+//    public synchronized long balance(SortedMap<TServerInstance,TabletServerStatus> current, Set<KeyExtent> migrations, List<TabletMigration> migrationsOut) {
+//        // Clear the location cache so we're sure to rebuild for this balancer pass
+//        tabletLocationCache = null;
+//
+//        // During balancing, we actually want to balance using groups that include multiple days, in order to ensure that
+//        // data doesn't cluster weeks or months of data on a subset of the cluster.
+//        final int numTservers = current.size();
+//        partitioner = new ShardGroupPartitioner(numTservers, getLocationProvider());
+//
+//        return super.balance(current, migrations, migrationsOut);
+//    }
     @Override
-    public synchronized long balance(SortedMap<TServerInstance,TabletServerStatus> current, Set<KeyExtent> migrations, List<TabletMigration> migrationsOut) {
+    public synchronized long balance(BalanceParameters balanceParameters) {
         // Clear the location cache so we're sure to rebuild for this balancer pass
         tabletLocationCache = null;
-        
+
         // During balancing, we actually want to balance using groups that include multiple days, in order to ensure that
         // data doesn't cluster weeks or months of data on a subset of the cluster.
-        final int numTservers = current.size();
-        partitioner = new ShardGroupPartitioner(numTservers, getLocationProvider());
-        
-        return super.balance(current, migrations, migrationsOut);
+        final int numTservers = balanceParameters.currentStatus().keySet().size();
+//        partitioner = new ShardGroupPartitioner(numTservers, getLocationProvider());
+
+        return super.balance(balanceParameters);
     }
     
     @Override
-    protected Function<KeyExtent,String> getPartitioner() {
-        return partitioner;
+    protected Function<TabletId,String> getPartitioner() {
+        ServiceEnvironment.Configuration conf = environment.getConfiguration(tableId);
+
+        return input -> {
+            String date = "null"; // Don't return null
+            Text endRow = input.getEndRow();
+            if (endRow != null) {
+                int sepIdx = endRow.find("_");
+                if (sepIdx < 0)
+                    sepIdx = endRow.getLength();
+                date = new String(endRow.getBytes(), 0, sepIdx);
+            }
+            return date;
+        };
     }
     
-    @Override
-    protected Map<KeyExtent,TServerInstance> getLocationProvider() {
-        // Cache metadata locations so we only scan the metadata table once per balancer pass
-        if (tabletLocationCache == null) {
-            tabletLocationCache = new HashMap<>();
-            tabletLocationCache.putAll(getRawLocationProvider());
-            tabletLocationCache = Collections.unmodifiableMap(tabletLocationCache);
-        }
-        return tabletLocationCache;
-    }
+//    @Override
+//    protected Map<KeyExtent,TServerInstance> getLocationProvider() {
+//        // Cache metadata locations so we only scan the metadata table once per balancer pass
+//        if (tabletLocationCache == null) {
+//            tabletLocationCache = new HashMap<>();
+//            tabletLocationCache.putAll(getRawLocationProvider());
+//            tabletLocationCache = Collections.unmodifiableMap(tabletLocationCache);
+//        }
+//        return tabletLocationCache;
+//    }
     
 //    @Override
 //    protected int getMaxMigrations() {
@@ -114,29 +151,8 @@ public class ShardedTableTabletBalancer extends GroupBalancer {
      * Gets the raw location provider. By default this just delegates to the parent class' {@link #getLocationProvider()} which scans the metadata table.
      * However, test cases might override in order to replace the parent metadata location provider whilst still allowing the caching mechanism in use here.
      */
-    protected Map<KeyExtent,TServerInstance> getRawLocationProvider() {
+    protected Map<TabletId,TabletServerId> getRawLocationProvider() {
         return super.getLocationProvider();
-    }
-    
-    /**
-     * Partitions extents into groups according to the "day" portion of the end row. That is, the end row is expected to be in the form yyyymmdd_x, and the
-     * partitioner returns yyyymmdd.
-     */
-    protected static class ShardDayPartitioner implements Function<KeyExtent,String> {
-        @Override
-        public String apply(KeyExtent extent) {
-            String date = "null"; // Don't return null
-            if (extent != null) {
-                Text endRow = extent.endRow();
-                if (endRow != null) {
-                    int sepIdx = endRow.find("_");
-                    if (sepIdx < 0)
-                        sepIdx = endRow.getLength();
-                    date = new String(endRow.getBytes(), 0, sepIdx);
-                }
-            }
-            return date;
-        }
     }
     
     /**

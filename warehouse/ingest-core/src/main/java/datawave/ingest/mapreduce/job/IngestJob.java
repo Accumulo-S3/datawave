@@ -108,6 +108,8 @@ import java.util.Map.Entry;
 import java.util.Observer;
 import java.util.Set;
 
+import static org.apache.hadoop.fs.FileSystem.FS_DEFAULT_NAME_KEY;
+
 /**
  * Class that starts a MapReduce job to create Accumulo Map files that to be bulk imported into Accumulo If outputMutations is specified, then Mutations are
  * created instead which will modify accumulo directly instead of using Accumulo Map files (e.g. use for live ingest). If mapOnly is specified (only valid for
@@ -180,6 +182,7 @@ public class IngestJob implements Tool {
     protected String zooKeepers = null;
     protected String userName = null;
     protected byte[] password = null;
+    protected String fs = null;
     
     protected URI srcHdfs = null;
     protected URI destHdfs = null;
@@ -352,9 +355,11 @@ public class IngestJob implements Tool {
         for (Path inputPath : getFilesToProcess(inputFs, inputFileLists, inputFileListMarker, inputPaths)) {
             FileInputFormat.addInputPath(job, inputPath);
         }
-        for (Path dependency : jobDependencies)
+        for (Path dependency : jobDependencies) {
+            log.info("dependency fs: " + dependency.getFileSystem(job.getConfiguration()));
             job.addFileToClassPath(dependency);
-        
+        }
+
         configureInputFormat(job, cbHelper, conf);
         
         configureJob(job, conf, workDirPath, outputFs);
@@ -374,6 +379,7 @@ public class IngestJob implements Tool {
         startDaemonProcesses(conf);
         long start = System.currentTimeMillis();
         job.submit();
+        log.info(job.getCluster().getFileSystem());
         JobID jobID = job.getJobID();
         log.info("JOB ID: " + jobID);
         
@@ -566,6 +572,10 @@ public class IngestJob implements Tool {
         for (int i = 1; i < args.length; i++) {
             if (args[i].equals("-inputFileLists")) {
                 inputFileLists = true;
+            } else if (args[i].equals("-fs")) {
+                fs = args[++i];
+                conf.set(FS_DEFAULT_NAME_KEY, fs);
+                log.info(FS_DEFAULT_NAME_KEY + " is set to " + fs + " for job...");
             } else if (args[i].equals("-inputFileListMarker")) {
                 inputFileListMarker = args[++i];
             } else if (args[i].equals("-instance")) {
@@ -991,7 +1001,7 @@ public class IngestJob implements Tool {
         }
         
         // we always want the job to use our jars instead of the ones in $HADOOP_HOME/lib
-        job.getConfiguration().setBoolean("mapreduce.job.user.classpath.first", true);
+        job.getConfiguration().setBoolean("mapreduce.job.user.classpath.first", false);
         
         // fetch the multiple numshards cache, if necessary
         if (job.getConfiguration().getBoolean(NumShards.ENABLE_MULTIPLE_NUMSHARDS, false)) {
@@ -1005,8 +1015,7 @@ public class IngestJob implements Tool {
     }
     
     /**
-     * @param keyValue
-     *            of format 'key=value'
+     * @param keyValue of format 'key=value'
      */
     protected void addConfOverride(String keyValue) {
         String[] strArr = keyValue.split("=", 2);
@@ -1027,10 +1036,11 @@ public class IngestJob implements Tool {
     protected int jobFailed(Job job, RunningJob runningJob, FileSystem fs, Path workDir) throws IOException {
         log.error("Map Reduce job " + job.getJobName() + " was unsuccessful. Check the logs.");
         log.error("Since job was not successful, deleting work directory: " + workDir);
-        boolean deleted = fs.delete(workDir, true);
-        if (!deleted) {
-            log.error("Unable to remove job working directory: " + workDir);
-        }
+        log.error("....not :)");
+//        boolean deleted = fs.delete(workDir, true);
+//        if (!deleted) {
+//            log.error("Unable to remove job working directory: " + workDir);
+//        }
         if (runningJob.getJobState() == JobStatus.KILLED) {
             log.warn("Job was killed");
             return -2;
@@ -1088,8 +1098,7 @@ public class IngestJob implements Tool {
     /**
      * Get the files to process
      *
-     * @param fs
-     *            used by extending classes such as MapFileMergeJob
+     * @param fs                  used by extending classes such as MapFileMergeJob
      * @param inputFileLists
      * @param inputFileListMarker
      * @param inputPaths
@@ -1240,12 +1249,9 @@ public class IngestJob implements Tool {
     /**
      * Configures the output formatter with the correct accumulo instance information, splits file, and shard table.
      *
-     * @param config
-     *            hadoop configuration
-     * @param compressionType
-     *            type of compression to use for the output format
-     * @param compressionTableBlackList
-     *            a set of table names for which we will not compress the rfile output
+     * @param config                    hadoop configuration
+     * @param compressionType           type of compression to use for the output format
+     * @param compressionTableBlackList a set of table names for which we will not compress the rfile output
      */
     public static void configureMultiRFileOutputFormatter(Configuration config, String compressionType, Set<String> compressionTableBlackList, int maxEntries,
                     long maxSize) {
